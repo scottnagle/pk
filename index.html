@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Penalty Shootout (10 Kicks)</title>
+  <title>Penalty Shootout (10 Kicks) — Stadium Upgrade</title>
   <style>
     :root{
       --bg:#071322;
@@ -24,7 +24,6 @@
       padding:14px;
     }
 
-    /* Layout: never overlap */
     .wrap{
       width:min(1120px, 100%);
       display:grid;
@@ -75,7 +74,7 @@
 
     .msg{
       align-self:center;
-      max-width:min(760px, 92%);
+      max-width:min(820px, 94%);
       text-align:center;
       background: var(--panel);
       border:1px solid var(--stroke);
@@ -112,13 +111,9 @@
       color: var(--text);
     }
 
-    .side{
-      padding:14px;
-      display:flex; flex-direction:column; gap:12px;
-    }
+    .side{ padding:14px; display:flex; flex-direction:column; gap:12px; }
     .side h2{ margin:0; font-size:16px; }
     .sub{ color:var(--muted); font-size:12.5px; line-height:1.35; }
-
     .panel{
       background: var(--panel);
       border:1px solid var(--stroke);
@@ -216,11 +211,12 @@
       </div>
 
       <div class="panel sub">
-        Upright goal realism tweaks:
+        New realism:
         <ul style="margin:8px 0 0 18px; padding:0;">
-          <li>Goal mouth is less “flat”</li>
-          <li>Back net is offset (depth)</li>
-          <li>Side net shading adds volume</li>
+          <li>Stadium crowd layer behind goal</li>
+          <li>3D goalposts (rear posts + thick crossbar)</li>
+          <li>Camera tilt so goal feels upright</li>
+          <li>Saved shots bounce off the keeper</li>
         </ul>
       </div>
 
@@ -252,21 +248,27 @@
 
   const W = canvas.width, H = canvas.height;
 
-  // More upright goal mouth: smaller vertical spread between top and bottom edges
-  // (less “lying down” look).
-  const goal = {
-    p0: {x: W*0.34, y: H*0.15}, // left top
-    p1: {x: W*0.66, y: H*0.15}, // right top
-    p2: {x: W*0.74, y: H*0.56}, // right bottom
-    p3: {x: W*0.26, y: H*0.56}, // left bottom
+  // CAMERA TILT: draw everything on a slightly tilted camera by scaling Y + translating.
+  // (Keeps UI untouched because UI is HTML overlay.)
+  const camera = {
+    tilt: 0.06,      // 0..0.12 feels good
+    lift: 12         // pixels up
   };
 
-  // "Back net" inset to create depth (pushes backwards and slightly down)
-  const netDepth = {
+  // Goal mouth quad (a bit more upright)
+  const goal = {
+    p0: {x: W*0.34, y: H*0.14},
+    p1: {x: W*0.66, y: H*0.14},
+    p2: {x: W*0.74, y: H*0.56},
+    p3: {x: W*0.26, y: H*0.56},
+  };
+
+  // Goal depth: rear frame & net volume
+  const depth = {
     insetU: 0.075,
     insetV: 0.07,
-    drop: 16,        // pixels down to imply depth
-    squeezeX: 0.975   // slight squeeze
+    drop: 22,
+    squeezeX: 0.97
   };
 
   const ballStart = { x: W*0.50, y: H*0.86 };
@@ -279,10 +281,13 @@
     charging: false,
     power: 0,
     spin: 0,
-    aim: { x: W*0.50, y: H*0.36 },
+    aim: { x: W*0.50, y: H*0.34 },
     shot: null,
     keeper: null,
-    tendencies: {L:0,C:0,R:0}
+    tendencies: {L:0,C:0,R:0},
+
+    // Ball bounce state after a save
+    bounce: null,  // {t, dur, x0,y0, vx, vy, g, spin, scale0}
   };
 
   const keys = new Set();
@@ -291,7 +296,6 @@
   function lerp(a,b,t){ return a + (b-a)*t; }
   function smoothstep(t){ return t*t*(3-2*t); }
   function rand(a,b){ return a + Math.random()*(b-a); }
-
   function setMessage(html){ msg.innerHTML = html; }
 
   // Geometry helpers
@@ -315,18 +319,15 @@
     return { x: lerp(topX, botX, v), y: lerp(topY, botY, v) };
   }
 
-  // "Back net" point using same UV but inset + offset
-  function backNetUVToScreen(u,v){
-    const iu = clamp(u,0,1)*(1-2*netDepth.insetU) + netDepth.insetU;
-    const iv = clamp(v,0,1)*(1-2*netDepth.insetV) + netDepth.insetV;
+  function backUVToScreen(u,v){
+    const iu = clamp(u,0,1)*(1-2*depth.insetU) + depth.insetU;
+    const iv = clamp(v,0,1)*(1-2*depth.insetV) + depth.insetV;
     const p = goalUVToScreen(iu, iv);
-    // depth illusion: pull slightly inward and down
     const cx = W*0.5;
-    return { x: cx + (p.x - cx)*netDepth.squeezeX, y: p.y + netDepth.drop };
+    return { x: cx + (p.x - cx)*depth.squeezeX, y: p.y + depth.drop };
   }
 
   function screenToGoalUV(x,y){
-    // lightweight iterative (good enough for aiming + AI)
     let u = clamp((x - goal.p0.x)/(goal.p1.x-goal.p0.x), 0,1);
     let v = clamp((y - goal.p0.y)/(goal.p3.y-goal.p0.y), 0,1);
     for(let i=0;i<10;i++){
@@ -354,6 +355,7 @@
     state.spin = 0;
     state.shot = null;
     state.keeper = null;
+    state.bounce = null;
 
     powerFill.style.width = '0%';
     powerPct.textContent = '0%';
@@ -437,7 +439,10 @@
       willMiss: Math.random() < missChance,
       missType: 'none',
       outcome: null,
-      committed: false
+      committed: false,
+
+      // used for bounce
+      lastBall: {x: ballStart.x, y: ballStart.y}
     };
 
     state.keeper = { plan };
@@ -482,10 +487,36 @@
     s.outcome = (roll <= 0) ? 'save' : 'goal';
   }
 
+  function startBounceFromSave(ballX, ballY){
+    // Make it bounce out and down toward the grass.
+    const dir = (ballX < W*0.5) ? -1 : 1;
+    const speed = rand(520, 680);
+    const angle = rand(-0.65, -0.25); // up a bit then down
+    const vx = Math.cos(angle) * speed * dir;
+    const vy = Math.sin(angle) * speed; // negative is up
+    state.bounce = {
+      t:0,
+      dur: 0.55,
+      x: ballX,
+      y: ballY,
+      vx,
+      vy,
+      g: 1600,           // gravity px/s^2
+      damp: 0.55,        // energy loss on ground
+      bounces: 0
+    };
+  }
+
   function commitKick(){
     const s = state.shot;
     if (!s || s.committed || !s.outcome) return;
     s.committed = true;
+
+    // If save, do a bounce effect first (keep the shot state but clear later)
+    if (s.outcome === 'save'){
+      // Start bounce from last ball position (near keeper contact)
+      startBounceFromSave(s.lastBall.x, s.lastBall.y);
+    }
 
     state.results.push(s.outcome);
     const idx = state.results.length - 1;
@@ -502,9 +533,9 @@
       setMessage(`<b>GOAL!</b>`);
     } else if (s.outcome === 'save'){
       resultLabel.textContent = 'Result: SAVED ❌';
-      detailLabel.textContent = 'Keeper got there.';
+      detailLabel.textContent = 'Keeper parried it away.';
       keeperLabel.textContent = 'Keeper: Save';
-      setMessage(`<b>SAVED!</b>`);
+      setMessage(`<b>SAVED!</b> <span>Parried out!</span>`);
     } else {
       resultLabel.textContent = 'Result: MISS ⚠️';
       detailLabel.textContent = `You ${s.missType}.`;
@@ -512,15 +543,27 @@
       setMessage(`<b>MISS!</b> <span>You ${s.missType}.</span>`);
     }
 
-    // Clear the shot so it can’t double-commit
+    // If not save, clear immediately. If save, let bounce animate, then clear.
+    if (s.outcome !== 'save'){
+      state.shot = null;
+      state.keeper = null;
+
+      if (state.kick >= 10){ finishGame(); return; }
+      state.kick++;
+      kickLabel.textContent = `Kick ${state.kick} / 10`;
+      setTimeout(() => resetKick(true), 900);
+    }
+  }
+
+  function endSaveAndAdvance(){
     state.shot = null;
     state.keeper = null;
+    state.bounce = null;
 
     if (state.kick >= 10){ finishGame(); return; }
     state.kick++;
     kickLabel.textContent = `Kick ${state.kick} / 10`;
-
-    setTimeout(() => resetKick(true), 900);
+    setTimeout(() => resetKick(true), 850);
   }
 
   // Drawing primitives
@@ -539,29 +582,79 @@
     ctx.closePath();
   }
 
-  function drawSky(){
-    const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0, '#0b1730');
-    g.addColorStop(0.6, '#071426');
-    g.addColorStop(1, '#04101c');
-    ctx.fillStyle = g;
-    ctx.fillRect(0,0,W,H);
+  function withCamera(fn){
+    ctx.save();
+    // Tilt: scale Y slightly and lift camera up
+    ctx.translate(0, -camera.lift);
+    ctx.transform(1, 0, 0, 1+camera.tilt, 0, 0);
+    fn();
+    ctx.restore();
+  }
 
-    // stadium light glow
-    function light(x,y){
+  // STADIUM / CROWD LAYER (behind goal)
+  function drawStadiumBackdrop(){
+    // Upper stands
+    const top = H*0.02;
+    const mid = H*0.36;
+
+    // sky haze behind stands
+    const haze = ctx.createLinearGradient(0, top, 0, mid);
+    haze.addColorStop(0, 'rgba(255,255,255,.06)');
+    haze.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, top, W, mid-top);
+
+    // stands structure
+    const stands = ctx.createLinearGradient(0, top, 0, mid);
+    stands.addColorStop(0, '#0a162b');
+    stands.addColorStop(0.55, '#071225');
+    stands.addColorStop(1, '#05101f');
+    ctx.fillStyle = stands;
+    ctx.fillRect(0, top, W, mid-top);
+
+    // crowd dots (parallax)
+    const bands = 6;
+    for(let b=0;b<bands;b++){
+      const y0 = lerp(top+18, mid-18, b/(bands-1));
+      const density = lerp(380, 160, b/(bands-1));
+      const size = lerp(2.2, 1.4, b/(bands-1));
+
+      for(let i=0;i<density;i++){
+        const x = Math.random()*W;
+        const y = y0 + rand(-10, 10);
+        // random shirts
+        const r = Math.random();
+        let col = 'rgba(255,255,255,.26)';
+        if (r < 0.12) col = 'rgba(102,227,255,.32)';
+        else if (r < 0.24) col = 'rgba(53,243,161,.30)';
+        else if (r < 0.30) col = 'rgba(255,92,122,.28)';
+
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // stadium ribbon LED
+    ctx.fillStyle = 'rgba(102,227,255,.10)';
+    ctx.fillRect(0, mid-22, W, 14);
+
+    // floodlight glow blobs
+    function glow(x,y){
       const rg = ctx.createRadialGradient(x,y,0,x,y,240);
-      rg.addColorStop(0,'rgba(255,255,255,.16)');
-      rg.addColorStop(0.25,'rgba(255,255,255,.07)');
+      rg.addColorStop(0,'rgba(255,255,255,.14)');
+      rg.addColorStop(0.28,'rgba(255,255,255,.06)');
       rg.addColorStop(1,'rgba(255,255,255,0)');
       ctx.fillStyle = rg;
       ctx.beginPath(); ctx.arc(x,y,240,0,Math.PI*2); ctx.fill();
     }
-    light(W*0.18,H*0.10);
-    light(W*0.82,H*0.10);
+    glow(W*0.18, H*0.10);
+    glow(W*0.82, H*0.10);
   }
 
   function drawPitch(){
-    const top = H*0.40;
+    const top = H*0.38;
     const g = ctx.createLinearGradient(0, top, 0, H);
     g.addColorStop(0, '#0c5b34');
     g.addColorStop(0.55, '#0a4f2e');
@@ -582,12 +675,12 @@
       ctx.fill();
     }
 
-    // goal line (helps upright feel)
-    ctx.strokeStyle = 'rgba(255,255,255,.50)';
+    // goal line
+    ctx.strokeStyle = 'rgba(255,255,255,.55)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(goal.p3.x-10, goal.p3.y+6);
-    ctx.lineTo(goal.p2.x+10, goal.p2.y+6);
+    ctx.moveTo(goal.p3.x-12, goal.p3.y+8);
+    ctx.lineTo(goal.p2.x+12, goal.p2.y+8);
     ctx.stroke();
 
     // penalty spot
@@ -595,131 +688,107 @@
     ctx.beginPath(); ctx.arc(ballStart.x, ballStart.y+22, 4.5, 0, Math.PI*2); ctx.fill();
   }
 
-  function drawGoalAndNet(){
-    // frame
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = 'rgba(255,255,255,.93)';
-    ctx.shadowColor = 'rgba(0,0,0,.45)';
+  // 3D GOALPOSTS: front frame + rear frame + connecting depth bars
+  function drawGoalPostsAndNet(){
+    // Compute rear frame corners (depth)
+    const f0 = goal.p0, f1 = goal.p1, f2 = goal.p2, f3 = goal.p3;
+    const r0 = backUVToScreen(0,0);
+    const r1 = backUVToScreen(1,0);
+    const r2 = backUVToScreen(1,1);
+    const r3 = backUVToScreen(0,1);
+
+    // Side net shading for volume
+    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.beginPath(); ctx.moveTo(f0.x,f0.y); ctx.lineTo(r0.x,r0.y); ctx.lineTo(r3.x,r3.y); ctx.lineTo(f3.x,f3.y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.16)';
+    ctx.beginPath(); ctx.moveTo(f1.x,f1.y); ctx.lineTo(r1.x,r1.y); ctx.lineTo(r2.x,r2.y); ctx.lineTo(f2.x,f2.y); ctx.closePath(); ctx.fill();
+
+    // rear frame shadow fill (back plane)
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.moveTo(r0.x,r0.y); ctx.lineTo(r1.x,r1.y); ctx.lineTo(r2.x,r2.y); ctx.lineTo(r3.x,r3.y); ctx.closePath(); ctx.fill();
+
+    // Net grid back
+    ctx.strokeStyle = 'rgba(255,255,255,.20)';
+    ctx.lineWidth = 1;
+    for(let i=0;i<=16;i++){
+      const u=i/16;
+      const a=backUVToScreen(u,0), d=backUVToScreen(u,1);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(d.x,d.y); ctx.stroke();
+    }
+    for(let j=0;j<=9;j++){
+      const v=j/9;
+      const a=backUVToScreen(0,v), d=backUVToScreen(1,v);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(d.x,d.y); ctx.stroke();
+    }
+
+    // Net connectors to show depth strings
+    ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    ctx.beginPath(); ctx.moveTo(f0.x,f0.y); ctx.lineTo(r0.x,r0.y);
+    ctx.moveTo(f1.x,f1.y); ctx.lineTo(r1.x,r1.y);
+    ctx.moveTo(f2.x,f2.y); ctx.lineTo(r2.x,r2.y);
+    ctx.moveTo(f3.x,f3.y); ctx.lineTo(r3.x,r3.y);
+    ctx.stroke();
+
+    // GOALPOST THICKNESS
+    // Draw rear frame first (slightly darker)
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = 'rgba(255,255,255,.60)';
+    ctx.beginPath();
+    ctx.moveTo(r0.x,r0.y); ctx.lineTo(r1.x,r1.y); ctx.lineTo(r2.x,r2.y); ctx.lineTo(r3.x,r3.y); ctx.closePath();
+    ctx.stroke();
+
+    // Depth bars (connect front and rear frame) - makes it look like a box
+    ctx.lineWidth = 12;
+    const depthStroke = ctx.createLinearGradient(0,0,0,H);
+    depthStroke.addColorStop(0,'rgba(255,255,255,.75)');
+    depthStroke.addColorStop(1,'rgba(255,255,255,.45)');
+    ctx.strokeStyle = depthStroke;
+    ctx.beginPath();
+    ctx.moveTo(f0.x,f0.y); ctx.lineTo(r0.x,r0.y);
+    ctx.moveTo(f1.x,f1.y); ctx.lineTo(r1.x,r1.y);
+    ctx.moveTo(f2.x,f2.y); ctx.lineTo(r2.x,r2.y);
+    ctx.moveTo(f3.x,f3.y); ctx.lineTo(r3.x,r3.y);
+    ctx.stroke();
+
+    // Front frame thick crossbar + posts (bright)
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = 'rgba(255,255,255,.94)';
+    ctx.shadowColor = 'rgba(0,0,0,.40)';
     ctx.shadowBlur = 10;
     ctx.shadowOffsetY = 6;
 
     ctx.beginPath();
-    ctx.moveTo(goal.p0.x, goal.p0.y);
-    ctx.lineTo(goal.p1.x, goal.p1.y);
-    ctx.lineTo(goal.p2.x, goal.p2.y);
-    ctx.lineTo(goal.p3.x, goal.p3.y);
+    ctx.moveTo(f0.x,f0.y); ctx.lineTo(f1.x,f1.y); // crossbar
+    ctx.lineTo(f2.x,f2.y);
+    ctx.lineTo(f3.x,f3.y);
     ctx.closePath();
     ctx.stroke();
 
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
-    // Back net quad (depth)
-    const b0 = backNetUVToScreen(0,0);
-    const b1 = backNetUVToScreen(1,0);
-    const b2 = backNetUVToScreen(1,1);
-    const b3 = backNetUVToScreen(0,1);
-
-    // Side net shading (gives upright “box” feeling)
-    ctx.fillStyle = 'rgba(0,0,0,.20)';
+    // Subtle highlight on crossbar thickness
+    ctx.strokeStyle = 'rgba(255,255,255,.35)';
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(goal.p0.x, goal.p0.y);
-    ctx.lineTo(b0.x, b0.y);
-    ctx.lineTo(b3.x, b3.y);
-    ctx.lineTo(goal.p3.x, goal.p3.y);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = 'rgba(0,0,0,.18)';
-    ctx.beginPath();
-    ctx.moveTo(goal.p1.x, goal.p1.y);
-    ctx.lineTo(b1.x, b1.y);
-    ctx.lineTo(b2.x, b2.y);
-    ctx.lineTo(goal.p2.x, goal.p2.y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Back net fill
-    ctx.fillStyle = 'rgba(0,0,0,.22)';
-    ctx.beginPath();
-    ctx.moveTo(b0.x, b0.y);
-    ctx.lineTo(b1.x, b1.y);
-    ctx.lineTo(b2.x, b2.y);
-    ctx.lineTo(b3.x, b3.y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Net lines: front + back with connectors
-    ctx.strokeStyle = 'rgba(255,255,255,.20)';
-    ctx.lineWidth = 1;
-
-    // Back net grid
-    for(let i=0;i<=16;i++){
-      const u=i/16;
-      const a=backNetUVToScreen(u,0), d=backNetUVToScreen(u,1);
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(d.x,d.y); ctx.stroke();
-    }
-    for(let j=0;j<=9;j++){
-      const v=j/9;
-      const a=backNetUVToScreen(0,v), d=backNetUVToScreen(1,v);
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(d.x,d.y); ctx.stroke();
-    }
-
-    // Front mouth net hint (lighter)
-    ctx.strokeStyle = 'rgba(255,255,255,.14)';
-    for(let i=0;i<=18;i++){
-      const u=i/18;
-      const a=goalUVToScreen(u,0), d=goalUVToScreen(u,1);
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(d.x,d.y); ctx.stroke();
-    }
-    for(let j=0;j<=10;j++){
-      const v=j/10;
-      const a=goalUVToScreen(0,v), d=goalUVToScreen(1,v);
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(d.x,d.y); ctx.stroke();
-    }
-
-    // Connectors from mouth to back net (depth strings)
-    ctx.strokeStyle = 'rgba(255,255,255,.12)';
-    const corners = [
-      {f:goal.p0, b:b0},
-      {f:goal.p1, b:b1},
-      {f:goal.p2, b:b2},
-      {f:goal.p3, b:b3},
-    ];
-    for (const c of corners){
-      ctx.beginPath(); ctx.moveTo(c.f.x, c.f.y); ctx.lineTo(c.b.x, c.b.y); ctx.stroke();
-    }
-
-    // Highlight glow
-    const hg = ctx.createLinearGradient(0, goal.p0.y-40, 0, goal.p3.y+60);
-    hg.addColorStop(0,'rgba(255,255,255,.14)');
-    hg.addColorStop(0.35,'rgba(255,255,255,.06)');
-    hg.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle = hg;
-    ctx.beginPath();
-    ctx.moveTo(goal.p0.x, goal.p0.y);
-    ctx.lineTo(goal.p1.x, goal.p1.y);
-    ctx.lineTo(goal.p2.x, goal.p2.y);
-    ctx.lineTo(goal.p3.x, goal.p3.y);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(f0.x, f0.y-2);
+    ctx.lineTo(f1.x, f1.y-2);
+    ctx.stroke();
   }
 
   function drawKeeper(time){
-    // Default idle in center
+    // Idle in center
     let u=0.5, v=0.68, rot=0, stretch=0;
 
     if (state.shot && state.keeper){
       const plan = state.keeper.plan;
-      const t = clamp(time/plan.flight, 0, 1);
       const commit = (time < plan.commitT) ? 0 : smoothstep(clamp((time-plan.commitT)/(plan.flight-plan.commitT+1e-6), 0, 1));
       u = lerp(0.5, plan.predU, commit);
       v = lerp(0.68, plan.predV, commit*0.75);
       rot = plan.dive * commit * 0.55;
       stretch = commit;
     } else {
-      // subtle idle sway
-      const s = Math.sin(performance.now()/500)*0.012;
+      const s = Math.sin(performance.now()/520)*0.012;
       u = 0.5 + s;
     }
 
@@ -728,12 +797,11 @@
     ctx.save();
     ctx.translate(p.x,p.y);
 
-    // Depth scale: keeper slightly larger lower in goal
-    const depthScale = lerp(0.86, 1.18, clamp((p.y - goal.p0.y)/(goal.p3.y - goal.p0.y), 0, 1));
+    const depthScale = lerp(0.86, 1.20, clamp((p.y - goal.p0.y)/(goal.p3.y - goal.p0.y), 0, 1));
     ctx.scale(depthScale, depthScale);
     ctx.rotate(rot);
 
-    // Shadow
+    // shadow
     ctx.globalAlpha = 0.32;
     ctx.fillStyle = 'rgba(0,0,0,.38)';
     ctx.beginPath();
@@ -755,7 +823,7 @@
     roundRect(-34, -28, 68, 64, 16);
     ctx.fill();
 
-    // arms
+    // arms + gloves
     const armW=18, armL=56;
     const armTilt = 0.45 + 0.95*stretch;
 
@@ -776,7 +844,7 @@
     roundRect(-30, 30, 60, 36, 12);
     ctx.fill();
 
-    // legs + boots
+    // legs
     const sock = ctx.createLinearGradient(-10,50,10,110);
     sock.addColorStop(0,'#e9f0ff');
     sock.addColorStop(1,'#cfd9f2');
@@ -784,6 +852,7 @@
     roundRect(-22, 58, 18, 44, 9); ctx.fill();
     roundRect(  4, 58, 18, 44, 9); ctx.fill();
 
+    // boots
     ctx.fillStyle = '#0b0f18';
     roundRect(-26, 96, 26, 14, 7); ctx.fill();
     roundRect(  0, 96, 26, 14, 7); ctx.fill();
@@ -795,9 +864,11 @@
     ctx.fillStyle = skin;
     ctx.beginPath(); ctx.arc(0, -48, 20, 0, Math.PI*2); ctx.fill();
 
+    // hair
     ctx.fillStyle = 'rgba(40,25,18,.9)';
     ctx.beginPath(); ctx.arc(0, -56, 18, Math.PI, Math.PI*2); ctx.fill();
 
+    // face shading
     ctx.fillStyle = 'rgba(0,0,0,.12)';
     ctx.beginPath(); ctx.arc(7, -44, 18, -0.6, 0.9); ctx.fill();
 
@@ -921,7 +992,45 @@
   });
 
   newBtn.addEventListener('click', () => resetKick(false));
-  resetBtn.addEventListener('click', () => { if (!state.shot) resetKick(true); });
+  resetBtn.addEventListener('click', () => { if (!state.shot && !state.bounce) resetKick(true); });
+
+  // Animate bounce ball after save
+  function updateBounce(dt){
+    const b = state.bounce;
+    if (!b) return null;
+
+    b.t += dt;
+
+    // physics step
+    b.vy += b.g * dt;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+
+    // ground collision near pitch top line (rough)
+    const groundY = H*0.60; // visually near goal mouth base
+    if (b.y > groundY && b.vy > 0){
+      b.y = groundY;
+      b.vy = -b.vy * b.damp;
+      b.vx *= 0.80;
+      b.bounces++;
+      // stop after a couple bounces
+      if (b.bounces >= 2 || Math.abs(b.vy) < 180){
+        // finish bounce
+        state.bounce = null;
+        endSaveAndAdvance();
+        return null;
+      }
+    }
+
+    // stop if too long
+    if (b.t > 1.2){
+      state.bounce = null;
+      endSaveAndAdvance();
+      return null;
+    }
+
+    return {x:b.x, y:b.y};
+  }
 
   // Animation loop
   let last = performance.now();
@@ -938,48 +1047,63 @@
       powerPct.textContent = `${Math.round(state.power*100)}%`;
       spinLabel.textContent = `${Math.round(state.spin*100)}`;
     } else if (state.aiming){
-      // gentle return toward 0
       state.spin = lerp(state.spin, 0, dt*2.2);
       spinLabel.textContent = `${Math.round(state.spin*100)}`;
     }
 
-    // draw world
-    drawSky();
-    drawPitch();
-    drawGoalAndNet();
+    // Draw world with camera tilt
+    withCamera(() => {
+      // BACKGROUND stadium behind goal
+      drawStadiumBackdrop();
 
-    if (!state.shot){
-      // draw keeper behind ball + ball
-      drawKeeper(0);
-      drawBall(ballStart, 0.52, 0);
-    } else {
-      const s = state.shot;
-      s.t += dt;
+      // pitch
+      drawPitch();
 
-      const t = clamp(s.t / s.flight, 0, 1);
-      const te = smoothstep(t);
+      // goal volume + net + 3D posts
+      drawGoalPostsAndNet();
 
-      const curveNow = s.curve * (t*t);
-      const end = goalUVToScreen(clamp(s.endUV.u + curveNow, 0.02, 0.98), s.endUV.v);
+      // keeper always visible
+      if (state.shot) drawKeeper(state.shot.t);
+      else drawKeeper(0);
 
-      const x = lerp(s.start.x, end.x, te);
-      const y = lerp(s.start.y, end.y, te);
+      // ball: either normal shot, bounce, or idle
+      if (state.bounce){
+        const p = updateBounce(dt);
+        if (p) drawBall(p, 0.26, 0.35);
+      } else if (!state.shot){
+        drawBall(ballStart, 0.52, 0);
+      } else {
+        const s = state.shot;
+        s.t += dt;
 
-      // Keeper and ball
-      drawKeeper(s.t);
+        const t = clamp(s.t / s.flight, 0, 1);
+        const te = smoothstep(t);
 
-      const scale = lerp(0.52, 0.20, te);
-      const blur = te * lerp(0.2, 1.0, clamp(state.power,0,1));
-      drawBall({x,y}, scale, blur);
+        const curveNow = s.curve * (t*t);
+        const end = goalUVToScreen(clamp(s.endUV.u + curveNow, 0.02, 0.98), s.endUV.v);
 
-      if (s.t < state.keeper.plan.commitT) keeperLabel.textContent = 'Keeper: Reading...';
-      else keeperLabel.textContent = 'Keeper: Diving!';
+        const x = lerp(s.start.x, end.x, te);
+        const y = lerp(s.start.y, end.y, te);
 
-      if (t >= 0.98 && !s.outcome) resolveOutcome();
-      if (t >= 1.00 && s.outcome && !s.committed) commitKick();
-    }
+        // store last ball position for bounce start
+        s.lastBall.x = x;
+        s.lastBall.y = y;
 
+        const scale = lerp(0.52, 0.20, te);
+        const blur = te * lerp(0.2, 1.0, clamp(state.power,0,1));
+        drawBall({x,y}, scale, blur);
+
+        if (s.t < state.keeper.plan.commitT) keeperLabel.textContent = 'Keeper: Reading...';
+        else keeperLabel.textContent = 'Keeper: Diving!';
+
+        if (t >= 0.98 && !s.outcome) resolveOutcome();
+        if (t >= 1.00 && s.outcome && !s.committed) commitKick();
+      }
+    });
+
+    // reticle not camera-tilted (so it tracks cursor precisely)
     drawReticle();
+
     requestAnimationFrame(frame);
   }
 
