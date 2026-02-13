@@ -1,180 +1,110 @@
-
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Penalty Shootout (10 Kicks)</title>
   <style>
     :root{
-      --bg1:#0b1a2a;
-      --bg2:#0a3b2b;
-      --panel:#0f1520cc;
+      --bg:#071322;
+      --panel: rgba(10,14,22,.62);
+      --panel2: rgba(255,255,255,.06);
+      --stroke: rgba(255,255,255,.12);
       --text:#e9f0ff;
-      --muted:#a8b3c7;
+      --muted:#a9b6cc;
       --accent:#66e3ff;
-      --danger:#ff5c7a;
       --good:#35f3a1;
+      --bad:#ff5c7a;
     }
+    *{box-sizing:border-box}
     html,body{height:100%; margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;}
     body{
-      background: radial-gradient(1200px 700px at 50% 10%, #1a3a5a 0%, var(--bg1) 35%, #06101b 100%);
-      color: var(--text);
-      display:flex; align-items:center; justify-content:center;
-      overflow:hidden;
+      background: radial-gradient(1200px 700px at 50% 10%, #1a3a5a 0%, var(--bg) 45%, #04101c 100%);
+      color:var(--text);
+      display:flex; justify-content:center; align-items:center;
+      padding:14px;
     }
+
+    /* --- Layout: never overlap, stack on smaller screens --- */
     .wrap{
-      width:min(1100px, 96vw);
+      width:min(1120px, 100%);
       display:grid;
-      grid-template-columns: 1.4fr 0.6fr;
+      grid-template-columns: minmax(0, 1fr) 340px;
       gap:14px;
       align-items:stretch;
     }
+    @media (max-width: 980px){
+      .wrap{ grid-template-columns: 1fr; }
+    }
+
     .card{
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 16px;
+      border-radius:16px;
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+      border:1px solid var(--stroke);
       box-shadow: 0 14px 40px rgba(0,0,0,.45);
       overflow:hidden;
+      min-width:0; /* critical: prevent grid overflow overlap */
     }
-    .stage{
-      position:relative;
-      aspect-ratio: 16/9;
-      background: radial-gradient(900px 400px at 50% 100%, rgba(255,255,255,.08), transparent 55%),
-                  linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.12));
+
+    .stage{ position:relative; }
+    .stage::before{
+      content:"";
+      position:absolute; inset:0;
+      background: radial-gradient(800px 400px at 50% 100%, rgba(255,255,255,.08), transparent 60%);
+      pointer-events:none;
     }
-    canvas{width:100%; height:100%; display:block;}
+
+    canvas{ display:block; width:100%; height:auto; aspect-ratio:16/9; }
+
     .hud{
       position:absolute; inset:0;
-      pointer-events:none;
-      display:flex; flex-direction:column;
-      justify-content:space-between;
       padding:12px;
+      pointer-events:none;
+      display:flex; flex-direction:column; justify-content:space-between;
     }
     .toprow{
-      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+      display:flex; justify-content:space-between; gap:12px; align-items:flex-start;
     }
     .pill{
-      pointer-events:none;
-      background: rgba(9,13,20,.55);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 999px;
+      background: var(--panel);
+      border:1px solid var(--stroke);
+      border-radius:999px;
       padding:8px 12px;
       backdrop-filter: blur(10px);
-      display:flex; gap:12px; align-items:center;
-      font-weight:600;
+      display:flex; gap:10px; align-items:center;
+      font-weight:800;
     }
-    .pill small{font-weight:600; color:var(--muted)}
-    .pill .dot{width:9px;height:9px;border-radius:99px;background:var(--accent); box-shadow:0 0 14px rgba(102,227,255,.75);}
+    .dot{ width:9px;height:9px;border-radius:99px;background:var(--accent); box-shadow:0 0 14px rgba(102,227,255,.75); }
+    .pill small{ color:var(--muted); font-weight:700; }
+
     .msg{
-      pointer-events:none;
       align-self:center;
-      margin-top:4px;
-      background: rgba(9,13,20,.55);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 14px;
-      padding:10px 14px;
-      backdrop-filter: blur(10px);
+      max-width:min(720px, 90%);
       text-align:center;
-      max-width: 70%;
-      font-weight:600;
+      background: var(--panel);
+      border:1px solid var(--stroke);
+      border-radius:14px;
+      padding:10px 12px;
+      backdrop-filter: blur(10px);
+      font-weight:800;
       line-height:1.2;
     }
-    .msg span{color:var(--muted); font-weight:600}
-    .botrow{
-      display:flex; align-items:flex-end; justify-content:space-between; gap:12px;
-    }
+    .msg span{ color:var(--muted); font-weight:700; }
+
+    .botrow{ display:flex; justify-content:space-between; align-items:flex-end; gap:12px; }
     .meter{
-      pointer-events:none;
-      width:min(420px, 55%);
-      background: rgba(9,13,20,.55);
-      border:1px solid rgba(255,255,255,.12);
+      width:min(420px, 62%);
+      background: var(--panel);
+      border:1px solid var(--stroke);
       border-radius:14px;
       padding:10px 12px;
       backdrop-filter: blur(10px);
     }
-    .meter .label{
-      display:flex; justify-content:space-between; align-items:baseline;
-      font-weight:700;
-      margin-bottom:8px;
-    }
-    .bar{
-      height:10px; border-radius:999px;
-      background: rgba(255,255,255,.10);
-      overflow:hidden;
-      position:relative;
-    }
-    .fill{
-      height:100%;
-      width:0%;
-      background: linear-gradient(90deg, rgba(102,227,255,.95), rgba(53,243,161,.95));
-      box-shadow: 0 0 16px rgba(102,227,255,.35);
-      border-radius:999px;
-    }
-    .tick{
-      position:absolute; top:-3px; bottom:-3px; width:2px;
-      background: rgba(255,255,255,.25);
-      left:50%;
-    }
-    .controls{
-      padding:14px;
-      display:flex; flex-direction:column; gap:12px;
-    }
-    .controls h2{
-      margin:0;
-      font-size:16px;
-      letter-spacing:.2px;
-    }
-    .sub{color:var(--muted); font-size:12.5px; line-height:1.3;}
-    .panel{
-      background: rgba(9,13,20,.55);
-      border:1px solid rgba(255,255,255,.12);
-      border-radius:14px;
-      padding:12px;
-    }
-    .grid{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:10px;
-    }
-    button, .btn{
-      appearance:none;
-      border:1px solid rgba(255,255,255,.14);
-      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
-      color:var(--text);
-      padding:10px 12px;
-      border-radius: 12px;
-      font-weight:800;
-      cursor:pointer;
-      transition: transform .06s ease, border-color .2s ease, background .2s ease;
-      user-select:none;
-    }
-    button:hover{border-color: rgba(102,227,255,.45)}
-    button:active{transform: translateY(1px) scale(.995)}
-    button[disabled]{opacity:.45; cursor:not-allowed}
-    .row{display:flex; gap:10px; align-items:center; justify-content:space-between;}
-    .stat{
-      display:flex; flex-direction:column; gap:4px;
-      font-weight:800;
-    }
-    .stat small{color:var(--muted); font-weight:700}
-    .kicks{
-      display:flex; gap:6px; flex-wrap:wrap;
-    }
-    .kdot{
-      width:12px;height:12px;border-radius:99px;
-      background: rgba(255,255,255,.14);
-      border:1px solid rgba(255,255,255,.12);
-      box-shadow: inset 0 0 0 2px rgba(0,0,0,.12);
-    }
-    .kdot.goal{background: rgba(53,243,161,.85); border-color: rgba(53,243,161,.8);}
-    .kdot.save{background: rgba(255,92,122,.85); border-color: rgba(255,92,122,.8);}
-    .kdot.miss{background: rgba(255,255,255,.35); border-color: rgba(255,255,255,.3);}
-    .hint{
-      font-size:12.5px;
-      color:var(--muted);
-      line-height:1.35;
-    }
+    .meter .label{ display:flex; justify-content:space-between; font-weight:900; margin-bottom:8px; }
+    .bar{ height:10px; border-radius:999px; background: rgba(255,255,255,.10); overflow:hidden; position:relative; }
+    .fill{ height:100%; width:0%; background: linear-gradient(90deg, rgba(102,227,255,.95), rgba(53,243,161,.95)); border-radius:999px; }
+    .tick{ position:absolute; left:50%; top:-3px; bottom:-3px; width:2px; background: rgba(255,255,255,.22); }
+
     .kbd{
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono";
       font-weight:900;
@@ -185,11 +115,50 @@
       border-radius:8px;
       color: var(--text);
     }
-    .footerBtns{display:flex; gap:10px;}
-    .danger{border-color: rgba(255,92,122,.35)}
-    .good{border-color: rgba(53,243,161,.35)}
-    .danger:hover{border-color: rgba(255,92,122,.7)}
-    .good:hover{border-color: rgba(53,243,161,.7)}
+
+    /* Right panel */
+    .side{
+      padding:14px;
+      display:flex; flex-direction:column; gap:12px;
+    }
+    .side h2{ margin:0; font-size:16px; }
+    .sub{ color:var(--muted); font-size:12.5px; line-height:1.35; }
+
+    .panel{
+      background: var(--panel);
+      border:1px solid var(--stroke);
+      border-radius:14px;
+      padding:12px;
+      backdrop-filter: blur(10px);
+    }
+    .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .stat{ font-weight:900; display:flex; flex-direction:column; gap:4px; }
+    .stat small{ color:var(--muted); font-weight:800; }
+
+    .kicks{ display:flex; gap:6px; flex-wrap:wrap; }
+    .kdot{
+      width:12px;height:12px;border-radius:99px;
+      background: rgba(255,255,255,.14);
+      border:1px solid rgba(255,255,255,.12);
+    }
+    .kdot.goal{ background: rgba(53,243,161,.85); border-color: rgba(53,243,161,.8); }
+    .kdot.save{ background: rgba(255,92,122,.85); border-color: rgba(255,92,122,.8); }
+    .kdot.miss{ background: rgba(255,255,255,.38); border-color: rgba(255,255,255,.30); }
+
+    button{
+      appearance:none;
+      border:1px solid rgba(255,255,255,.14);
+      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      font-weight:900;
+      cursor:pointer;
+      transition: transform .06s ease, border-color .2s ease;
+    }
+    button:hover{ border-color: rgba(102,227,255,.45); }
+    button:active{ transform: translateY(1px) scale(.995); }
+    .btnRow{ display:flex; gap:10px; }
   </style>
 </head>
 <body>
@@ -199,13 +168,11 @@
 
       <div class="hud">
         <div class="toprow">
-          <div class="pill">
-            <div class="dot"></div>
-            <div>
-              <div>Penalty Shootout</div>
-              <small id="kickLabel">Kick 1 / 10</small>
-            </div>
-          </div>
+          <div class="pill"><div class="dot"></div><div>
+            <div>Penalty Shootout</div>
+            <small id="kickLabel">Kick 1 / 10</small>
+          </div></div>
+
           <div class="pill">
             <div class="stat">
               <div id="scoreLabel">Score: 0</div>
@@ -215,70 +182,59 @@
         </div>
 
         <div class="msg" id="msg">
-          Aim by clicking inside the goal. <span>Hold <span class="kbd">SPACE</span> to power up, release to shoot.</span>
+          Click inside the goal to aim. <span>Hold <span class="kbd">SPACE</span> to power up, release to shoot.</span>
         </div>
 
         <div class="botrow">
           <div class="meter">
-            <div class="label">
-              <div>Power</div>
-              <div id="powerPct">0%</div>
-            </div>
-            <div class="bar">
-              <div class="tick"></div>
-              <div class="fill" id="powerFill"></div>
-            </div>
+            <div class="label"><div>Power</div><div id="powerPct">0%</div></div>
+            <div class="bar"><div class="tick"></div><div class="fill" id="powerFill"></div></div>
           </div>
           <div class="pill" style="gap:10px;">
             <small>Spin</small>
             <div id="spinLabel" style="font-weight:900;">0</div>
-            <small style="opacity:.9;">(A/D)</small>
+            <small>(A/D)</small>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="card controls">
+    <div class="card side">
       <div>
         <h2>Controls</h2>
         <div class="sub">
-          Click to aim. Hold <span class="kbd">SPACE</span> to build power and release to shoot.<br/>
-          Add curve with <span class="kbd">A</span>/<span class="kbd">D</span> while powering up.
+          • Click to aim<br/>
+          • Hold <span class="kbd">SPACE</span> to build power → release to shoot<br/>
+          • While charging: <span class="kbd">A</span>/<span class="kbd">D</span> adds curve<br/>
+          • <span class="kbd">N</span> = new game
         </div>
       </div>
 
       <div class="panel">
-        <div class="row">
-          <div class="stat">
-            <div id="resultLabel">Result: —</div>
-            <small id="detailLabel">Pick a spot and shoot.</small>
-          </div>
+        <div class="stat">
+          <div id="resultLabel">Result: —</div>
+          <small id="detailLabel">Pick a spot and shoot.</small>
         </div>
-        <div style="height:10px;"></div>
+        <div style="height:10px"></div>
         <div class="row">
-          <div class="stat">
-            <div>Kick results</div>
-            <small>10 kicks total</small>
-          </div>
+          <div class="stat"><div>Kick results</div><small>10 kicks total</small></div>
         </div>
-        <div style="height:8px;"></div>
+        <div style="height:8px"></div>
         <div class="kicks" id="kicks"></div>
       </div>
 
-      <div class="panel">
-        <div class="hint">
-          Realism bits:
-          <ul style="margin:8px 0 0 18px; padding:0;">
-            <li>Shot accuracy decreases at very high power.</li>
-            <li>Keeper “reads” body language: repeated corners become predictable.</li>
-            <li>Late shots get more power but less control.</li>
-          </ul>
-        </div>
+      <div class="panel sub">
+        Keeper AI:
+        <ul style="margin:8px 0 0 18px; padding:0;">
+          <li>Reads tendencies (repeat corners = more saves)</li>
+          <li>High power = less accuracy</li>
+          <li>Top corners are hardest to save</li>
+        </ul>
       </div>
 
-      <div class="footerBtns">
-        <button class="good" id="newBtn">New Game</button>
-        <button class="danger" id="resetBtn">Reset Kick</button>
+      <div class="btnRow">
+        <button id="newBtn">New Game</button>
+        <button id="resetBtn">Reset Kick</button>
       </div>
     </div>
   </div>
@@ -288,7 +244,6 @@
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
 
-  // UI
   const msg = document.getElementById('msg');
   const kickLabel = document.getElementById('kickLabel');
   const scoreLabel = document.getElementById('scoreLabel');
@@ -302,56 +257,73 @@
   const newBtn = document.getElementById('newBtn');
   const resetBtn = document.getElementById('resetBtn');
 
-  // Pre-create kick dots
-  function initKickDots() {
+  const W = canvas.width, H = canvas.height;
+
+  const goal = {
+    // Goal mouth quad (screen-space)
+    p0: {x: W*0.33, y: H*0.20}, // left top
+    p1: {x: W*0.67, y: H*0.20}, // right top
+    p2: {x: W*0.78, y: H*0.58}, // right bottom
+    p3: {x: W*0.22, y: H*0.58}, // left bottom
+  };
+
+  const ballStart = { x: W*0.50, y: H*0.86 };
+
+  const state = {
+    kick: 1,
+    score: 0,
+    results: [],
+    aiming: true,
+    charging: false,
+    power: 0,
+    spin: 0,        // -1..1
+    aim: { x: W*0.50, y: H*0.40 },
+    shot: null,
+    keeper: null,
+    tendencies: {L:0,C:0,R:0}
+  };
+
+  const keys = new Set();
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function smoothstep(t){ return t*t*(3-2*t); }
+  function rand(a,b){ return a + Math.random()*(b-a); }
+
+  function setMessage(html){ msg.innerHTML = html; }
+
+  // Robust point-in-convex-quad using cross products (works reliably)
+  function cross(ax,ay,bx,by){ return ax*by - ay*bx; }
+  function pointInQuad(pt, q){
+    const p = pt;
+    const a = q.p0, b = q.p1, c = q.p2, d = q.p3;
+    function sameSide(p1,p2, a,b){
+      const cp1 = cross(b.x-a.x, b.y-a.y, p1.x-a.x, p1.y-a.y);
+      const cp2 = cross(b.x-a.x, b.y-a.y, p2.x-a.x, p2.y-a.y);
+      return cp1*cp2 >= 0;
+    }
+    // Split quad into triangles (a,b,c) and (a,c,d)
+    function pointInTri(p,a,b,c){
+      const s1 = cross(b.x-a.x,b.y-a.y, p.x-a.x,p.y-a.y);
+      const s2 = cross(c.x-b.x,c.y-b.y, p.x-b.x,p.y-b.y);
+      const s3 = cross(a.x-c.x,a.y-c.y, p.x-c.x,p.y-c.y);
+      const hasNeg = (s1<0)||(s2<0)||(s3<0);
+      const hasPos = (s1>0)||(s2>0)||(s3>0);
+      return !(hasNeg && hasPos);
+    }
+    return pointInTri(p,a,b,c) || pointInTri(p,a,c,d);
+  }
+
+  function initKickDots(){
     kicksEl.innerHTML = '';
-    for (let i=0;i<10;i++){
+    for(let i=0;i<10;i++){
       const d = document.createElement('div');
       d.className = 'kdot';
       kicksEl.appendChild(d);
     }
   }
-  initKickDots();
 
-  // Coordinate helpers
-  const W = canvas.width, H = canvas.height;
-
-  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
-  function lerp(a,b,t){ return a + (b-a)*t; }
-  function smoothstep(t){ return t*t*(3-2*t); }
-  function rand(a,b){ return a + Math.random()*(b-a); }
-
-  // Perspective goal plane bounds (in screen coords)
-  // These define the inside mouth of the goal for aiming
-  const goal = {
-    leftTop:   {x: W*0.33, y: H*0.20},
-    rightTop:  {x: W*0.67, y: H*0.20},
-    leftBot:   {x: W*0.22, y: H*0.58},
-    rightBot:  {x: W*0.78, y: H*0.58},
-    depth: 1.0
-  };
-
-  // Ball start (penalty spot-ish)
-  const ballStart = { x: W*0.50, y: H*0.86 };
-
-  // Game state
-  const state = {
-    kick: 1,
-    score: 0,
-    results: [], // 'goal'|'save'|'miss'
-    aiming: true,
-    charging: false,
-    power: 0,
-    spin: 0,      // -1..1
-    aim: { x: W*0.50, y: H*0.40 }, // default center
-    shot: null,
-    keeper: null,
-    lastAimBuckets: {L:0,C:0,R:0},
-  };
-
-  function setMessage(html){ msg.innerHTML = html; }
-
-  function resetKick(keepKickNumber=true){
+  function resetKick(keepNumber=true){
     state.aiming = true;
     state.charging = false;
     state.power = 0;
@@ -366,260 +338,156 @@
     resultLabel.textContent = 'Result: —';
     detailLabel.textContent = 'Pick a spot and shoot.';
 
-    if (!keepKickNumber){
+    if (!keepNumber){
       state.kick = 1;
       state.score = 0;
       state.results = [];
-      state.lastAimBuckets = {L:0,C:0,R:0};
+      state.tendencies = {L:0,C:0,R:0};
       initKickDots();
       scoreLabel.textContent = 'Score: 0';
     }
+
     kickLabel.textContent = `Kick ${state.kick} / 10`;
-    setMessage(`Aim by clicking inside the goal. <span>Hold <span class="kbd">SPACE</span> to power up, release to shoot.</span>`);
+    setMessage(`Click inside the goal to aim. <span>Hold <span class="kbd">SPACE</span> to power up, release to shoot.</span>`);
   }
 
   function finishGame(){
     state.aiming = false;
     state.charging = false;
-    const outOf = 10;
-    const s = state.score;
-    let vibe = "Nice.";
-    if (s >= 8) vibe = "Elite finishing.";
-    else if (s >= 6) vibe = "Strong performance.";
-    else if (s >= 4) vibe = "Could be better—keeper had you read.";
-    else vibe = "Rough day at the office.";
-    setMessage(`Final: <b>${s} / ${outOf}</b> — ${vibe} <span>Press <span class="kbd">N</span> or click “New Game”.</span>`);
     keeperLabel.textContent = 'Keeper: Done';
+    let vibe = "Nice.";
+    if (state.score >= 8) vibe = "Elite finishing.";
+    else if (state.score >= 6) vibe = "Strong performance.";
+    else if (state.score >= 4) vibe = "Could be better.";
+    else vibe = "Rough day.";
+    setMessage(`Final: <b>${state.score} / 10</b> — ${vibe} <span>Press <span class="kbd">N</span> to start again.</span>`);
     detailLabel.textContent = 'Game over.';
   }
 
-  // Map a screen point to "goal-local" coordinates (u,v) in [0..1] inside quad
-  // We'll approximate via bilinear coordinates using iterative solve (few steps).
+  // Convert between goal-local (u,v) and screen by bilinear interpolation
+  function goalUVToScreen(u,v){
+    const a=goal.p0,b=goal.p1,c=goal.p2,d=goal.p3;
+    // bilinear: top lerp + bottom lerp then lerp between
+    const topX = lerp(a.x,b.x,u), topY = lerp(a.y,b.y,u);
+    const botX = lerp(d.x,c.x,u), botY = lerp(d.y,c.y,u);
+    return { x: lerp(topX, botX, v), y: lerp(topY, botY, v) };
+  }
   function screenToGoalUV(x,y){
-    const p00 = goal.leftTop, p10 = goal.rightTop, p01 = goal.leftBot, p11 = goal.rightBot;
-    // Initial guess based on bounding box
-    let u = (x - p00.x) / (p10.x - p00.x);
-    let v = (y - p00.y) / (p01.y - p00.y);
-    u = clamp(u,0,1); v = clamp(v,0,1);
-
-    // Iteratively refine: bilinear interpolation P(u,v)
-    for(let i=0;i<6;i++){
-      const px = (1-u)*(1-v)*p00.x + u*(1-v)*p10.x + (1-u)*v*p01.x + u*v*p11.x;
-      const py = (1-u)*(1-v)*p00.y + u*(1-v)*p10.y + (1-u)*v*p01.y + u*v*p11.y;
-
-      // Numerical partial derivatives
-      const du = 0.0008;
-      const dv = 0.0008;
-
-      const pxu = (1-(u+du))*(1-v)*p00.x + (u+du)*(1-v)*p10.x + (1-(u+du))*v*p01.x + (u+du)*v*p11.x;
-      const pyu = (1-(u+du))*(1-v)*p00.y + (u+du)*(1-v)*p10.y + (1-(u+du))*v*p01.y + (u+du)*v*p11.y;
-
-      const pxv = (1-u)*(1-(v+dv))*p00.x + u*(1-(v+dv))*p10.x + (1-u)*(v+dv)*p01.x + u*(v+dv)*p11.x;
-      const pyv = (1-u)*(1-(v+dv))*p00.y + u*(1-(v+dv))*p10.y + (1-u)*(v+dv)*p01.y + u*(v+dv)*p11.y;
-
-      const dPdu = {x:(pxu-px)/du, y:(pyu-py)/du};
-      const dPdv = {x:(pxv-px)/dv, y:(pyv-py)/dv};
-
-      const ex = x - px;
-      const ey = y - py;
-
-      // Solve 2x2
-      const a = dPdu.x, b = dPdv.x, c = dPdu.y, d = dPdv.y;
-      const det = a*d - b*c;
-      if (Math.abs(det) < 1e-6) break;
-      const iu = ( ex*d - b*ey) / det;
-      const iv = ( a*ey - ex*c) / det;
-
-      u = clamp(u + iu, 0, 1);
-      v = clamp(v + iv, 0, 1);
+    // Simple iterative solve (but no longer used to validate "inside")
+    let u = clamp((x - goal.p0.x)/(goal.p1.x-goal.p0.x), 0,1);
+    let v = clamp((y - goal.p0.y)/(goal.p3.y-goal.p0.y), 0,1);
+    for(let i=0;i<8;i++){
+      const p = goalUVToScreen(u,v);
+      const ex = x - p.x, ey = y - p.y;
+      u = clamp(u + ex*0.0008, 0, 1);
+      v = clamp(v + ey*0.0008, 0, 1);
     }
     return {u,v};
   }
 
-  function goalUVToScreen(u,v){
-    const p00 = goal.leftTop, p10 = goal.rightTop, p01 = goal.leftBot, p11 = goal.rightBot;
-    const x = (1-u)*(1-v)*p00.x + u*(1-v)*p10.x + (1-u)*v*p01.x + u*v*p11.x;
-    const y = (1-u)*(1-v)*p00.y + u*(1-v)*p10.y + (1-u)*v*p01.y + u*v*p11.y;
-    return {x,y};
-  }
-
-  function insideGoalQuad(x,y){
-    // Quick accept using UV solve
-    const uv = screenToGoalUV(x,y);
-    const p = goalUVToScreen(uv.u, uv.v);
-    const dist = Math.hypot(p.x-x, p.y-y);
-    return dist < 10; // close enough
-  }
-
-  // Keeper AI: chooses a dive target (u,v) and reaction timing
-  function computeKeeperPlan(aimUV, power){
-    // Bucket tracking (reads tendencies)
+  function keeperAI(aimUV, power){
     const bucket = (aimUV.u < 0.34) ? 'L' : (aimUV.u > 0.66 ? 'R' : 'C');
-    const tendencies = state.lastAimBuckets;
-    const total = tendencies.L + tendencies.C + tendencies.R + 0.001;
+    state.tendencies[bucket]++;
 
-    // Base guess from tendencies + slight current aim read
-    const biasL = (tendencies.L/total);
-    const biasC = (tendencies.C/total);
-    const biasR = (tendencies.R/total);
+    const t = state.tendencies;
+    const total = t.L+t.C+t.R+0.001;
+    const biasU = (0.18*(t.L/total) + 0.50*(t.C/total) + 0.82*(t.R/total));
 
-    // Keeper skill constants
-    const skill = 0.62; // overall strength
-    const aggression = 0.65; // commits more
-    const reactionBase = 0.22; // seconds
-    const reactionVariance = 0.16;
+    const skill = 0.62;
+    const aggression = 0.65;
 
-    // Predict u: weighted mix of center + past + current
-    let predU =
-      0.50*(1-aggression) +
-      (0.20 + 0.30*skill) * aimUV.u +
-      (0.30 + 0.25*skill) * (0.18*biasL + 0.50*biasC + 0.82*biasR);
+    let predU = 0.50*(1-aggression) + (0.25+0.25*skill)*aimUV.u + (0.30+0.25*skill)*biasU;
+    predU = clamp(predU + rand(-0.10,0.10)*(1-skill), 0.08, 0.92);
 
-    predU = clamp(predU + rand(-0.08, 0.08)*(1-skill), 0.08, 0.92);
+    let predV = clamp(lerp(0.62, aimUV.v, 0.40) + rand(-0.10,0.10)*(1-skill), 0.18, 0.92);
 
-    // Predict v: keeper tends to cover mid-high unless power very low
-    let predV = 0.58 - 0.28*aimUV.v; // invert-ish (higher shots are harder)
-    predV = clamp( lerp(0.55, aimUV.v, 0.35 + 0.25*skill) + rand(-0.10,0.10)*(1-skill), 0.18, 0.92 );
+    const flight = lerp(0.95, 0.62, power);
+    const reaction = clamp(0.22 + rand(-0.16, 0.16), 0.10, 0.45);
+    const commitT = clamp(reaction + lerp(0.08, 0.02, skill), 0.10, 0.55);
 
-    // Reaction time: higher power reduces time available (ball arrives faster)
-    const flight = lerp(0.95, 0.62, power); // seconds
-    const reaction = clamp(reactionBase + rand(-reactionVariance, reactionVariance), 0.10, 0.45);
-    const commitTime = clamp(reaction + lerp(0.08, 0.02, skill), 0.10, 0.55);
-
-    // Dive direction from predicted u
     const dive = (predU < 0.40) ? -1 : (predU > 0.60 ? 1 : 0);
+    const reach = lerp(0.11, 0.18, skill) * (dive===0 ? 0.86 : 1.0);
 
-    // Save radius depends on skill and dive correctness
-    const baseReach = lerp(0.11, 0.18, skill); // in UV units
-    const reach = baseReach * (dive === 0 ? 0.85 : 1.0);
-
-    return {
-      bucket,
-      predU, predV,
-      dive,
-      flight,
-      reaction,
-      commitTime,
-      reach
-    };
+    return {predU,predV,flight,commitT,dive,reach,bucket};
   }
 
-  // Shot physics
   function startShot(){
     const aimUV = screenToGoalUV(state.aim.x, state.aim.y);
+    const p = clamp(state.power,0,1);
+    const spin = clamp(state.spin,-1,1);
 
-    // store tendencies
-    const b = (aimUV.u < 0.34) ? 'L' : (aimUV.u > 0.66 ? 'R' : 'C');
-    state.lastAimBuckets[b]++;
+    // Accuracy worsens at very high power
+    const wild = smoothstep(clamp((p-0.78)/0.22, 0, 1));
+    const spreadU = lerp(0.020, 0.075, wild);
+    const spreadV = lerp(0.018, 0.060, wild);
 
-    // Power in 0..1
-    const p = clamp(state.power, 0, 1);
+    // Curve in U from spin
+    const curve = spin * lerp(0.00, 0.11, p);
 
-    // Accuracy worsens as power approaches max
-    const wild = smoothstep(clamp((p - 0.78)/0.22, 0, 1)); // 0..1
-    const spreadU = lerp(0.018, 0.070, wild);
-    const spreadV = lerp(0.015, 0.060, wild);
-
-    // Spin affects curve (left/right) and slight dip
-    const spin = clamp(state.spin, -1, 1);
-    const curve = spin * lerp(0.00, 0.10, p); // u offset over flight
-    const dip   = Math.abs(spin) * lerp(0.00, 0.05, p);
-
-    // Final target UV with randomness
     let tu = clamp(aimUV.u + rand(-spreadU, spreadU), 0.04, 0.96);
-    let tv = clamp(aimUV.v + rand(-spreadV, spreadV) + dip*0.15, 0.06, 0.96);
+    let tv = clamp(aimUV.v + rand(-spreadV, spreadV), 0.06, 0.96);
 
-    // Chance to outright miss (post/crossbar/side-net) rises with high power & extreme corners
     const cornerRisk = Math.max(Math.abs(tu-0.5)-0.20, 0)*1.35;
     const missChance = clamp(0.02 + 0.12*wild + 0.10*cornerRisk, 0.02, 0.28);
 
-    const plan = computeKeeperPlan(aimUV, p);
+    const plan = keeperAI(aimUV, p);
 
     state.shot = {
-      t: 0,
-      // time to arrive
+      t:0,
       flight: plan.flight,
-      // start
-      x0: ballStart.x, y0: ballStart.y,
-      // goal target screen point (end)
-      endUV: {u: tu, v: tv},
-      endP: goalUVToScreen(tu, tv),
-      // spin curve sign
-      spin,
-      curve,
-      // random miss decision
+      start: {x:ballStart.x, y:ballStart.y},
+      endUV: {u:tu, v:tv},
+      spin, curve,
       willMiss: Math.random() < missChance,
       missType: 'none',
-      // outcome determined near end
       outcome: null
     };
 
     state.keeper = {
-      t: 0,
       plan,
-      // keeper current position as UV-ish (centered)
-      u: 0.5, v: 0.62,
-      // animation state
-      dive: plan.dive,
-      committed: false,
-      commitT: plan.commitTime,
-      reach: plan.reach
+      t:0
     };
 
     state.aiming = false;
     keeperLabel.textContent = 'Keeper: Reading...';
-    setMessage(`<b>Shot away!</b> <span>(${spin===0?'no spin': (spin<0?'left curve':'right curve')}, power ${Math.round(p*100)}%)</span>`);
+    setMessage(`<b>Shot away!</b> <span>(${spin===0?'no spin':(spin<0?'left curve':'right curve')}, power ${Math.round(p*100)}%)</span>`);
   }
 
   function resolveOutcome(){
-    const shot = state.shot;
-    const keep = state.keeper;
-    if (!shot || shot.outcome) return;
+    const s = state.shot;
+    const plan = state.keeper.plan;
+    if (!s || s.outcome) return;
 
-    // If miss: determine plausible miss type near posts/crossbar
-    if (shot.willMiss){
-      const u = shot.endUV.u, v = shot.endUV.v;
-      // Choose miss direction based on where aiming
-      if (v < 0.12) shot.missType = 'over the bar';
-      else if (u < 0.10) shot.missType = 'wide left';
-      else if (u > 0.90) shot.missType = 'wide right';
-      else shot.missType = 'hits the post';
-      shot.outcome = 'miss';
+    if (s.willMiss){
+      const u=s.endUV.u, v=s.endUV.v;
+      if (v < 0.12) s.missType = 'over the bar';
+      else if (u < 0.10) s.missType = 'wide left';
+      else if (u > 0.90) s.missType = 'wide right';
+      else s.missType = 'hits the post';
+      s.outcome = 'miss';
       return;
     }
 
-    // Determine keeper save by distance between ball end UV and keeper predicted reach center at impact
-    // We'll approximate keeper end position as moving toward predicted (predU,predV) after commit.
-    const plan = keep.plan;
-    const ballUV = shot.endUV;
+    // Ball "impact" UV includes curve (builds during flight)
+    const impactU = clamp(s.endUV.u + s.curve, 0.02, 0.98);
+    const impactV = s.endUV.v;
 
-    // Keeper "gets there" based on time: if commits late, reach shrinks
-    const late = clamp((plan.commitTime - (plan.flight*0.55)) / (plan.flight*0.45), 0, 1);
+    // Time factor if keeper commits late
+    const late = clamp((plan.commitT - (plan.flight*0.55)) / (plan.flight*0.45), 0, 1);
     const timeFactor = lerp(1.0, 0.75, late);
 
-    // Keeper center for save attempt
     const ku = clamp(plan.predU, 0.06, 0.94);
     const kv = clamp(plan.predV, 0.10, 0.92);
 
-    const du = ballUV.u - ku;
-    const dv = ballUV.v - kv;
+    const du = impactU - ku;
+    const dv = impactV - kv;
 
-    // Shots high corners are harder
-    const cornerHard = clamp((Math.abs(ballUV.u-0.5) + (0.6 - ballUV.v)) * 0.65, 0, 0.55);
-
-    // Effective reach
+    const cornerHard = clamp((Math.abs(impactU-0.5) + (0.6 - impactV)) * 0.65, 0, 0.55);
     const reach = plan.reach * timeFactor * (1.0 - 0.45*cornerHard);
 
-    const dist = Math.hypot(du, dv);
-
-    // Add a small randomness so it feels alive
-    const saveRoll = dist - reach + rand(-0.012, 0.020);
-
-    if (saveRoll <= 0){
-      shot.outcome = 'save';
-    } else {
-      shot.outcome = 'goal';
-    }
+    const dist = Math.hypot(du,dv);
+    const roll = dist - reach + rand(-0.012, 0.020);
+    s.outcome = (roll <= 0) ? 'save' : 'goal';
   }
 
   function commitKick(){
@@ -627,153 +495,59 @@
     if (!out) return;
 
     state.results.push(out);
-
-    // Update dots
     const idx = state.results.length - 1;
     const dot = kicksEl.children[idx];
-    if (dot){
-      dot.classList.add(out === 'goal' ? 'goal' : (out === 'save' ? 'save' : 'miss'));
-    }
+    if (dot) dot.classList.add(out);
 
     if (out === 'goal') state.score++;
-
     scoreLabel.textContent = `Score: ${state.score}`;
-    const shot = state.shot;
 
     if (out === 'goal'){
       resultLabel.textContent = 'Result: GOAL ✅';
       detailLabel.textContent = 'Clean finish.';
       keeperLabel.textContent = 'Keeper: Beaten';
-      setMessage(`<b>GOAL!</b> <span>The keeper guessed ${state.keeper.plan.dive===-1?'left':(state.keeper.plan.dive===1?'right':'center')}.</span>`);
+      setMessage(`<b>GOAL!</b> <span>Keeper guessed ${state.keeper.plan.dive===-1?'left':(state.keeper.plan.dive===1?'right':'center')}.</span>`);
     } else if (out === 'save'){
       resultLabel.textContent = 'Result: SAVED ❌';
-      detailLabel.textContent = 'Keeper got a hand to it.';
+      detailLabel.textContent = 'Keeper got there.';
       keeperLabel.textContent = 'Keeper: Save';
       setMessage(`<b>SAVED!</b> <span>Great stop by the keeper.</span>`);
     } else {
       resultLabel.textContent = 'Result: MISS ⚠️';
-      detailLabel.textContent = `You ${shot.missType}.`;
+      detailLabel.textContent = `You ${state.shot.missType}.`;
       keeperLabel.textContent = 'Keeper: Watches';
-      setMessage(`<b>MISS!</b> <span>You ${shot.missType}.</span>`);
+      setMessage(`<b>MISS!</b> <span>You ${state.shot.missType}.</span>`);
     }
 
-    // Next kick or finish
-    if (state.kick >= 10){
-      finishGame();
-      return;
-    }
-
+    if (state.kick >= 10){ finishGame(); return; }
     state.kick++;
     kickLabel.textContent = `Kick ${state.kick} / 10`;
 
-    // Auto-reset after a short beat
-    setTimeout(() => {
-      if (state.results.length < 10){
-        resetKick(true);
-      }
-    }, 1100);
+    setTimeout(() => resetKick(true), 900);
   }
 
-  // Input
-  let mouse = {x: W*0.5, y: H*0.5};
-  canvas.addEventListener('mousemove', (e) => {
-    const r = canvas.getBoundingClientRect();
-    const x = (e.clientX - r.left) * (W / r.width);
-    const y = (e.clientY - r.top)  * (H / r.height);
-    mouse = {x,y};
-    if (state.aiming && insideGoalQuad(x,y)){
-      state.aim.x = x; state.aim.y = y;
-    }
-  });
-
-  canvas.addEventListener('click', (e) => {
-    if (!state.aiming) return;
-    const r = canvas.getBoundingClientRect();
-    const x = (e.clientX - r.left) * (W / r.width);
-    const y = (e.clientY - r.top)  * (H / r.height);
-    if (insideGoalQuad(x,y)){
-      state.aim.x = x; state.aim.y = y;
-      setMessage(`Aim locked. <span>Hold <span class="kbd">SPACE</span> to power up, release to shoot.</span>`);
-    } else {
-      setMessage(`Click <b>inside the goal</b> to aim. <span>Then hold <span class="kbd">SPACE</span>.</span>`);
-    }
-  });
-
-  const keys = new Set();
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') e.preventDefault();
-    keys.add(e.code);
-
-    if (e.code === 'KeyN'){
-      resetKick(false);
-      return;
-    }
-
-    if (!state.aiming) return;
-
-    if (e.code === 'Space' && !state.charging){
-      // require aim inside goal quad
-      if (!insideGoalQuad(state.aim.x, state.aim.y)){
-        setMessage(`Click <b>inside the goal</b> to aim first. <span>Then hold <span class="kbd">SPACE</span>.</span>`);
-        return;
-      }
-      state.charging = true;
-      setMessage(`Charging… <span>Use <span class="kbd">A</span>/<span class="kbd">D</span> for curve.</span>`);
-    }
-  });
-
-  window.addEventListener('keyup', (e) => {
-    keys.delete(e.code);
-
-    if (e.code === 'Space'){
-      if (state.charging && state.aiming){
-        state.charging = false;
-        startShot();
-      }
-    }
-  });
-
-  newBtn.addEventListener('click', () => resetKick(false));
-  resetBtn.addEventListener('click', () => {
-    if (state.shot) return; // don't reset during shot
-    resetKick(true);
-  });
-
-  // Drawing helpers for realism
+  // Drawing
   function drawSky(){
     const g = ctx.createLinearGradient(0,0,0,H);
     g.addColorStop(0, '#0b1730');
-    g.addColorStop(0.55, '#071426');
-    g.addColorStop(1, '#04101b');
+    g.addColorStop(0.6, '#071426');
+    g.addColorStop(1, '#04101c');
     ctx.fillStyle = g;
     ctx.fillRect(0,0,W,H);
 
-    // stadium lights glow
     function light(x,y){
-      const rg = ctx.createRadialGradient(x,y,0,x,y,220);
+      const rg = ctx.createRadialGradient(x,y,0,x,y,230);
       rg.addColorStop(0,'rgba(255,255,255,.16)');
-      rg.addColorStop(0.22,'rgba(255,255,255,.07)');
+      rg.addColorStop(0.25,'rgba(255,255,255,.07)');
       rg.addColorStop(1,'rgba(255,255,255,0)');
       ctx.fillStyle = rg;
-      ctx.beginPath(); ctx.arc(x,y,220,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,230,0,Math.PI*2); ctx.fill();
     }
-    light(W*0.18, H*0.12);
-    light(W*0.82, H*0.12);
-
-    // subtle grain
-    ctx.globalAlpha = 0.07;
-    for (let i=0;i<260;i++){
-      const x = Math.random()*W;
-      const y = Math.random()*H;
-      const r = Math.random()*1.6;
-      ctx.fillStyle = 'rgba(255,255,255,.35)';
-      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
+    light(W*0.18,H*0.12);
+    light(W*0.82,H*0.12);
   }
 
   function drawPitch(){
-    // Grass with stripes
     const top = H*0.42;
     const g = ctx.createLinearGradient(0, top, 0, H);
     g.addColorStop(0, '#0c5b34');
@@ -782,8 +556,7 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, top, W, H-top);
 
-    // Stripes
-    for (let i=0;i<14;i++){
+    for(let i=0;i<14;i++){
       const x0 = -W*0.1 + (i/14)*W*1.2;
       ctx.fillStyle = i%2 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)';
       ctx.beginPath();
@@ -795,232 +568,66 @@
       ctx.fill();
     }
 
-    // Penalty box lines perspective
-    ctx.strokeStyle = 'rgba(255,255,255,.45)';
-    ctx.lineWidth = 3;
-    ctx.globalAlpha = 0.85;
-
-    // Penalty spot & arc hints
-    ctx.beginPath();
-    ctx.arc(ballStart.x, ballStart.y+22, 4.5, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(255,255,255,.85)';
-    ctx.fill();
-
-    ctx.globalAlpha = 1;
+    // Penalty spot
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.beginPath(); ctx.arc(ballStart.x, ballStart.y+22, 4.5, 0, Math.PI*2); ctx.fill();
   }
 
-  function drawGoalNet(){
-    // Goal frame
+  function drawGoal(){
+    // Frame
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(255,255,255,.92)';
     ctx.shadowColor = 'rgba(0,0,0,.45)';
     ctx.shadowBlur = 10;
     ctx.shadowOffsetY = 6;
-
     ctx.beginPath();
-    ctx.moveTo(goal.leftTop.x, goal.leftTop.y);
-    ctx.lineTo(goal.rightTop.x, goal.rightTop.y);
-    ctx.lineTo(goal.rightBot.x, goal.rightBot.y);
-    ctx.lineTo(goal.leftBot.x, goal.leftBot.y);
+    ctx.moveTo(goal.p0.x, goal.p0.y);
+    ctx.lineTo(goal.p1.x, goal.p1.y);
+    ctx.lineTo(goal.p2.x, goal.p2.y);
+    ctx.lineTo(goal.p3.x, goal.p3.y);
     ctx.closePath();
     ctx.stroke();
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-
-    // Net depth illusion: a slightly inset quad
-    const inset = 0.06;
-    const p00 = goalUVToScreen(inset, inset);
-    const p10 = goalUVToScreen(1-inset, inset);
-    const p01 = goalUVToScreen(inset, 1-inset);
-    const p11 = goalUVToScreen(1-inset, 1-inset);
-
-    // back net shading
+    // Net shading
     ctx.fillStyle = 'rgba(0,0,0,.22)';
     ctx.beginPath();
-    ctx.moveTo(p00.x, p00.y);
-    ctx.lineTo(p10.x, p10.y);
-    ctx.lineTo(p11.x, p11.y);
-    ctx.lineTo(p01.x, p01.y);
+    ctx.moveTo(goal.p0.x, goal.p0.y);
+    ctx.lineTo(goal.p1.x, goal.p1.y);
+    ctx.lineTo(goal.p2.x, goal.p2.y);
+    ctx.lineTo(goal.p3.x, goal.p3.y);
     ctx.closePath();
     ctx.fill();
 
-    // Net lines
+    // Net grid
     ctx.strokeStyle = 'rgba(255,255,255,.20)';
     ctx.lineWidth = 1;
-
-    // vertical-ish net lines (vary u)
     for(let i=0;i<=18;i++){
-      const u = i/18;
-      const a = goalUVToScreen(u, 0);
-      const b = goalUVToScreen(u, 1);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      const u=i/18;
+      const a = goalUVToScreen(u,0);
+      const b = goalUVToScreen(u,1);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
     }
-    // horizontal-ish net lines (vary v)
     for(let j=0;j<=10;j++){
-      const v = j/10;
-      const a = goalUVToScreen(0, v);
-      const b = goalUVToScreen(1, v);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      const v=j/10;
+      const a = goalUVToScreen(0,v);
+      const b = goalUVToScreen(1,v);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
     }
 
-    // Net highlight glow near top
-    const hg = ctx.createLinearGradient(0, goal.leftTop.y-30, 0, goal.leftBot.y+40);
+    // Highlight glow
+    const hg = ctx.createLinearGradient(0, goal.p0.y-30, 0, goal.p3.y+40);
     hg.addColorStop(0,'rgba(255,255,255,.14)');
-    hg.addColorStop(0.25,'rgba(255,255,255,.06)');
+    hg.addColorStop(0.3,'rgba(255,255,255,.06)');
     hg.addColorStop(1,'rgba(255,255,255,0)');
     ctx.fillStyle = hg;
     ctx.beginPath();
-    ctx.moveTo(goal.leftTop.x, goal.leftTop.y);
-    ctx.lineTo(goal.rightTop.x, goal.rightTop.y);
-    ctx.lineTo(goal.rightBot.x, goal.rightBot.y);
-    ctx.lineTo(goal.leftBot.x, goal.leftBot.y);
+    ctx.moveTo(goal.p0.x, goal.p0.y);
+    ctx.lineTo(goal.p1.x, goal.p1.y);
+    ctx.lineTo(goal.p2.x, goal.p2.y);
+    ctx.lineTo(goal.p3.x, goal.p3.y);
     ctx.closePath();
     ctx.fill();
-  }
-
-  function drawKeeper(t){
-    // Keeper position based on plan & time
-    // We draw on the goal mouth plane (approx)
-    const keep = state.keeper;
-    if (!keep){
-      // idle in center
-      drawKeeperBody(goalUVToScreen(0.5, 0.66), 0, 0);
-      return;
-    }
-
-    const plan = keep.plan;
-    const flight = plan.flight;
-    const commitT = plan.commitTime;
-    const tt = clamp(t / flight, 0, 1);
-
-    // commit progress after commit time
-    const commitProg = (t < commitT) ? 0 : smoothstep(clamp((t-commitT) / (flight-commitT + 1e-6), 0, 1));
-    const ku = lerp(0.5, plan.predU, commitProg);
-    const kv = lerp(0.66, plan.predV, commitProg*0.7);
-
-    // dive angle
-    const dive = plan.dive;
-    const diveRot = dive * commitProg * 0.55;
-    const diveStretch = commitProg;
-
-    drawKeeperBody(goalUVToScreen(ku, kv), diveRot, diveStretch);
-  }
-
-  function drawKeeperBody(p, rot, stretch){
-    // A "real-ish" keeper using gradients and shapes
-    ctx.save();
-    ctx.translate(p.x, p.y);
-
-    // Slight scale based on depth (lower = larger)
-    const depthScale = lerp(0.85, 1.15, clamp((p.y - goal.leftTop.y) / (goal.leftBot.y - goal.leftTop.y), 0, 1));
-    ctx.scale(depthScale, depthScale);
-
-    ctx.rotate(rot);
-
-    // Shadow on grass/net plane
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = 'rgba(0,0,0,.35)';
-    ctx.beginPath();
-    ctx.ellipse(0, 70, 42 + 22*stretch, 12, 0, 0, Math.PI*2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // Body gradients
-    const jersey = ctx.createLinearGradient(-40,-40,40,60);
-    jersey.addColorStop(0,'#1ed16b');
-    jersey.addColorStop(0.6,'#10a95a');
-    jersey.addColorStop(1,'#0c7c46');
-
-    const shorts = ctx.createLinearGradient(-30,10,30,90);
-    shorts.addColorStop(0,'#2b3446');
-    shorts.addColorStop(1,'#151c2a');
-
-    // Torso
-    ctx.fillStyle = jersey;
-    roundRect(-34, -28, 68, 64, 16);
-    ctx.fill();
-
-    // Arms (with gloves)
-    const armW = 18, armL = 56;
-    const armTilt = 0.45 + 0.9*stretch;
-    // left arm
-    ctx.save();
-    ctx.rotate(-armTilt);
-    ctx.fillStyle = jersey;
-    roundRect(-armW-6, -18, armW, armL, 10);
-    ctx.fill();
-    // glove
-    ctx.fillStyle = '#f1f5ff';
-    roundRect(-armW-10, 28, armW+8, 18, 9);
-    ctx.fill();
-    ctx.restore();
-
-    // right arm
-    ctx.save();
-    ctx.rotate(armTilt);
-    ctx.fillStyle = jersey;
-    roundRect(6, -18, armW, armL, 10);
-    ctx.fill();
-    ctx.fillStyle = '#f1f5ff';
-    roundRect(4, 28, armW+8, 18, 9);
-    ctx.fill();
-    ctx.restore();
-
-    // Shorts
-    ctx.fillStyle = shorts;
-    roundRect(-30, 30, 60, 36, 12);
-    ctx.fill();
-
-    // Legs
-    const sock = ctx.createLinearGradient(-10,50,10,110);
-    sock.addColorStop(0,'#e9f0ff');
-    sock.addColorStop(1,'#cfd9f2');
-
-    // left leg
-    ctx.fillStyle = sock;
-    roundRect(-22, 58, 18, 44, 9);
-    ctx.fill();
-    // right leg
-    ctx.fillStyle = sock;
-    roundRect(4, 58, 18, 44, 9);
-    ctx.fill();
-
-    // Boots
-    ctx.fillStyle = '#0b0f18';
-    roundRect(-26, 96, 26, 14, 7);
-    ctx.fill();
-    roundRect(0, 96, 26, 14, 7);
-    ctx.fill();
-
-    // Head
-    const skin = ctx.createRadialGradient(0,-50,6,0,-44,26);
-    skin.addColorStop(0,'#ffddb9');
-    skin.addColorStop(1,'#e6b48b');
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.arc(0, -48, 20, 0, Math.PI*2);
-    ctx.fill();
-
-    // Hair
-    ctx.fillStyle = 'rgba(40,25,18,.9)';
-    ctx.beginPath();
-    ctx.arc(0, -56, 18, Math.PI, Math.PI*2);
-    ctx.fill();
-
-    // Face shadow
-    ctx.fillStyle = 'rgba(0,0,0,.12)';
-    ctx.beginPath();
-    ctx.arc(7, -44, 18, -0.6, 0.9);
-    ctx.fill();
-
-    ctx.restore();
   }
 
   function roundRect(x,y,w,h,r){
@@ -1038,13 +645,104 @@
     ctx.closePath();
   }
 
+  function drawKeeper(time){
+    let u=0.5, v=0.66, rot=0, stretch=0;
+
+    if (state.shot && state.keeper){
+      const plan = state.keeper.plan;
+      const t = clamp(time/plan.flight, 0, 1);
+      const commit = (time < plan.commitT) ? 0 : smoothstep(clamp((time-plan.commitT)/(plan.flight-plan.commitT+1e-6), 0, 1));
+      u = lerp(0.5, plan.predU, commit);
+      v = lerp(0.66, plan.predV, commit*0.7);
+      rot = plan.dive * commit * 0.55;
+      stretch = commit;
+    }
+
+    const p = goalUVToScreen(u,v);
+
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    const depthScale = lerp(0.85, 1.15, clamp((p.y - goal.p0.y)/(goal.p3.y - goal.p0.y), 0, 1));
+    ctx.scale(depthScale, depthScale);
+    ctx.rotate(rot);
+
+    // Shadow
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.beginPath();
+    ctx.ellipse(0, 70, 42 + 22*stretch, 12, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const jersey = ctx.createLinearGradient(-40,-40,40,60);
+    jersey.addColorStop(0,'#1ed16b');
+    jersey.addColorStop(0.6,'#10a95a');
+    jersey.addColorStop(1,'#0c7c46');
+
+    const shorts = ctx.createLinearGradient(-30,10,30,90);
+    shorts.addColorStop(0,'#2b3446');
+    shorts.addColorStop(1,'#151c2a');
+
+    // torso
+    ctx.fillStyle = jersey;
+    roundRect(-34, -28, 68, 64, 16);
+    ctx.fill();
+
+    // arms
+    const armW=18, armL=56;
+    const armTilt = 0.45 + 0.9*stretch;
+
+    ctx.save();
+    ctx.rotate(-armTilt);
+    ctx.fillStyle = jersey; roundRect(-armW-6, -18, armW, armL, 10); ctx.fill();
+    ctx.fillStyle = '#f1f5ff'; roundRect(-armW-10, 28, armW+8, 18, 9); ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.rotate(armTilt);
+    ctx.fillStyle = jersey; roundRect(6, -18, armW, armL, 10); ctx.fill();
+    ctx.fillStyle = '#f1f5ff'; roundRect(4, 28, armW+8, 18, 9); ctx.fill();
+    ctx.restore();
+
+    // shorts
+    ctx.fillStyle = shorts;
+    roundRect(-30, 30, 60, 36, 12);
+    ctx.fill();
+
+    // legs + boots
+    const sock = ctx.createLinearGradient(-10,50,10,110);
+    sock.addColorStop(0,'#e9f0ff');
+    sock.addColorStop(1,'#cfd9f2');
+    ctx.fillStyle = sock;
+    roundRect(-22, 58, 18, 44, 9); ctx.fill();
+    roundRect(  4, 58, 18, 44, 9); ctx.fill();
+
+    ctx.fillStyle = '#0b0f18';
+    roundRect(-26, 96, 26, 14, 7); ctx.fill();
+    roundRect(  0, 96, 26, 14, 7); ctx.fill();
+
+    // head
+    const skin = ctx.createRadialGradient(0,-50,6,0,-44,26);
+    skin.addColorStop(0,'#ffddb9');
+    skin.addColorStop(1,'#e6b48b');
+    ctx.fillStyle = skin;
+    ctx.beginPath(); ctx.arc(0, -48, 20, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = 'rgba(40,25,18,.9)';
+    ctx.beginPath(); ctx.arc(0, -56, 18, Math.PI, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = 'rgba(0,0,0,.12)';
+    ctx.beginPath(); ctx.arc(7, -44, 18, -0.6, 0.9); ctx.fill();
+
+    ctx.restore();
+  }
+
   function drawBall(pos, scale, blur=0){
     ctx.save();
-    ctx.translate(pos.x, pos.y);
+    ctx.translate(pos.x,pos.y);
     ctx.scale(scale, scale);
 
-    // Motion blur trail
-    if (blur > 0){
+    if (blur>0){
       ctx.globalAlpha = 0.18;
       ctx.fillStyle = 'rgba(255,255,255,.7)';
       ctx.beginPath();
@@ -1053,50 +751,36 @@
       ctx.globalAlpha = 1;
     }
 
-    // Ball shading
     const g = ctx.createRadialGradient(-10,-12,6,0,0,34);
     g.addColorStop(0,'#ffffff');
     g.addColorStop(0.55,'#f1f3f7');
     g.addColorStop(1,'#cfd7e6');
 
     ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0,0,28,0,Math.PI*2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.fill();
 
-    // seams / panels
     ctx.strokeStyle = 'rgba(20,30,50,.38)';
     ctx.lineWidth = 2;
-    for (let i=0;i<6;i++){
-      const a = (i/6)*Math.PI*2;
-      ctx.beginPath();
-      ctx.arc(0,0,18, a, a+Math.PI/2);
-      ctx.stroke();
+    for(let i=0;i<6;i++){
+      const a=(i/6)*Math.PI*2;
+      ctx.beginPath(); ctx.arc(0,0,18,a,a+Math.PI/2); ctx.stroke();
     }
-    ctx.beginPath();
-    ctx.arc(0,0,9,0,Math.PI*2);
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.stroke();
 
-    // specular highlight
     ctx.fillStyle = 'rgba(255,255,255,.75)';
-    ctx.beginPath();
-    ctx.ellipse(-10,-12,9,6, -0.4, 0, Math.PI*2);
-    ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-10,-12,9,6,-0.4,0,Math.PI*2); ctx.fill();
 
-    // contact shadow if near ground
     ctx.restore();
   }
 
-  function drawAimReticle(){
+  function drawReticle(){
     if (!state.aiming) return;
-    // Draw reticle at aimed position if inside goal
-    const inside = insideGoalQuad(state.aim.x, state.aim.y);
-    const x = state.aim.x, y = state.aim.y;
+    const inside = pointInQuad({x:state.aim.x,y:state.aim.y}, goal);
 
+    const x=state.aim.x, y=state.aim.y;
     ctx.save();
     ctx.globalAlpha = inside ? 0.95 : 0.45;
 
-    // outer glow
     const rg = ctx.createRadialGradient(x,y,0,x,y,44);
     rg.addColorStop(0,'rgba(102,227,255,.20)');
     rg.addColorStop(0.5,'rgba(102,227,255,.08)');
@@ -1107,116 +791,137 @@
     ctx.strokeStyle = inside ? 'rgba(102,227,255,.95)' : 'rgba(255,255,255,.45)';
     ctx.lineWidth = 2;
 
-    // crosshair
+    ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2); ctx.stroke();
     ctx.beginPath();
-    ctx.arc(x,y,16,0,Math.PI*2);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(x-26,y);
-    ctx.lineTo(x-10,y);
-    ctx.moveTo(x+10,y);
-    ctx.lineTo(x+26,y);
-    ctx.moveTo(x,y-26);
-    ctx.lineTo(x,y-10);
-    ctx.moveTo(x,y+10);
-    ctx.lineTo(x,y+26);
+    ctx.moveTo(x-26,y); ctx.lineTo(x-10,y);
+    ctx.moveTo(x+10,y); ctx.lineTo(x+26,y);
+    ctx.moveTo(x,y-26); ctx.lineTo(x,y-10);
+    ctx.moveTo(x,y+10); ctx.lineTo(x,y+26);
     ctx.stroke();
 
     ctx.restore();
   }
 
-  // Main animation loop
+  // Input: map mouse coords to canvas coords correctly
+  function eventToCanvas(e){
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) * (W / r.width);
+    const y = (e.clientY - r.top)  * (H / r.height);
+    return {x,y};
+  }
+
+  canvas.addEventListener('mousemove', (e) => {
+    const p = eventToCanvas(e);
+    if (state.aiming){
+      state.aim.x = p.x;
+      state.aim.y = p.y;
+    }
+  });
+
+  canvas.addEventListener('click', (e) => {
+    if (!state.aiming) return;
+    const p = eventToCanvas(e);
+    if (pointInQuad(p, goal)){
+      state.aim.x = p.x; state.aim.y = p.y;
+      setMessage(`Aim set. <span>Hold <span class="kbd">SPACE</span> to power up, release to shoot.</span>`);
+    } else {
+      setMessage(`Click <b>inside the goal</b> to aim. <span>Then hold <span class="kbd">SPACE</span>.</span>`);
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') e.preventDefault();
+    keys.add(e.code);
+
+    if (e.code === 'KeyN'){ resetKick(false); return; }
+
+    if (!state.aiming) return;
+
+    if (e.code === 'Space' && !state.charging){
+      if (!pointInQuad({x:state.aim.x,y:state.aim.y}, goal)){
+        setMessage(`Aim first: click <b>inside the goal</b>. <span>Then hold <span class="kbd">SPACE</span>.</span>`);
+        return;
+      }
+      state.charging = true;
+      setMessage(`Charging… <span>Use <span class="kbd">A</span>/<span class="kbd">D</span> for curve.</span>`);
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    keys.delete(e.code);
+    if (e.code === 'Space'){
+      if (state.charging && state.aiming){
+        state.charging = false;
+        startShot();
+      }
+    }
+  });
+
+  newBtn.addEventListener('click', () => resetKick(false));
+  resetBtn.addEventListener('click', () => { if (!state.shot) resetKick(true); });
+
+  // Animation
   let last = performance.now();
-  function tick(now){
+  function frame(now){
     const dt = Math.min(0.033, (now-last)/1000);
     last = now;
 
-    // Update charging/power/spin
+    // power + spin
     if (state.aiming && state.charging){
-      // power builds up 0..1 with slight curve
       state.power = clamp(state.power + dt*0.85, 0, 1);
-
-      // spin control while charging
       if (keys.has('KeyA')) state.spin = clamp(state.spin - dt*1.6, -1, 1);
       if (keys.has('KeyD')) state.spin = clamp(state.spin + dt*1.6, -1, 1);
 
       powerFill.style.width = `${Math.round(state.power*100)}%`;
       powerPct.textContent = `${Math.round(state.power*100)}%`;
       spinLabel.textContent = `${Math.round(state.spin*100)}`;
-    } else if (state.aiming && !state.charging){
-      // decay spin back toward zero a little
+    } else if (state.aiming){
       state.spin = lerp(state.spin, 0, dt*2.2);
       spinLabel.textContent = `${Math.round(state.spin*100)}`;
     }
 
-    // Draw scene
+    // draw
     drawSky();
     drawPitch();
-    drawGoalNet();
+    drawGoal();
 
-    // Draw keeper behind ball
-    if (state.shot){
-      drawKeeper(state.shot.t);
-    } else {
-      drawKeeper(0);
-    }
-
-    // Ball
+    // keeper + ball
     if (!state.shot){
-      // idle ball at spot
-      drawBall({x:ballStart.x, y:ballStart.y}, 0.52);
+      drawKeeper(0);
+      drawBall(ballStart, 0.52, 0);
     } else {
       const s = state.shot;
       s.t += dt;
       const t = clamp(s.t / s.flight, 0, 1);
-
-      // Flight curve: ease-out to target
       const te = smoothstep(t);
 
-      // Curve over time due to spin (sideways)
-      const curveU = s.curve * (t*t); // builds during flight
-      const u = clamp(s.endUV.u + curveU, 0.02, 0.98);
-      const v = s.endUV.v;
+      const curveNow = s.curve * (t*t); // curve builds during flight
+      const end = goalUVToScreen(clamp(s.endUV.u + curveNow, 0.02, 0.98), s.endUV.v);
 
-      // Convert current to screen point by interpolating start->goal point
-      const end = goalUVToScreen(u, v);
-      const x = lerp(s.x0, end.x, te);
-      const y = lerp(s.y0, end.y, te);
+      const x = lerp(s.start.x, end.x, te);
+      const y = lerp(s.start.y, end.y, te);
 
-      // Ball appears smaller as it travels
       const scale = lerp(0.52, 0.20, te);
+      const blur = te * lerp(0.2, 1.0, clamp(state.power,0,1));
 
-      // Motion blur increases with power and speed
-      const blur = lerp(0.0, 1.0, te) * lerp(0.2, 1.0, clamp(state.power,0,1));
-
+      drawKeeper(s.t);
       drawBall({x,y}, scale, blur);
 
-      // Keeper update
-      if (state.keeper){
-        // status text
-        if (s.t < state.keeper.plan.commitTime) keeperLabel.textContent = 'Keeper: Reading...';
-        else keeperLabel.textContent = 'Keeper: Diving!';
-      }
+      if (s.t < state.keeper.plan.commitT) keeperLabel.textContent = 'Keeper: Reading...';
+      else keeperLabel.textContent = 'Keeper: Diving!';
 
-      // Near end: resolve outcome & commit result once
-      if (t >= 0.98 && !s.outcome){
-        resolveOutcome();
-      }
-      if (t >= 1.00 && s.outcome){
-        commitKick();
-      }
+      if (t >= 0.98 && !s.outcome) resolveOutcome();
+      if (t >= 1.00 && s.outcome) commitKick();
     }
 
-    // Reticle
-    drawAimReticle();
-
-    requestAnimationFrame(tick);
+    drawReticle();
+    requestAnimationFrame(frame);
   }
-  requestAnimationFrame(tick);
 
-  // Start fresh
+  // Kick dots
+  initKickDots();
   resetKick(false);
+  requestAnimationFrame(frame);
 
 })();
 </script>
