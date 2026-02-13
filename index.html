@@ -8,7 +8,6 @@
     :root{
       --bg:#071322;
       --panel: rgba(10,14,22,.62);
-      --panel2: rgba(255,255,255,.06);
       --stroke: rgba(255,255,255,.12);
       --text:#e9f0ff;
       --muted:#a9b6cc;
@@ -24,8 +23,6 @@
       display:flex; justify-content:center; align-items:center;
       padding:14px;
     }
-
-    /* --- Layout: never overlap, stack on smaller screens --- */
     .wrap{
       width:min(1120px, 100%);
       display:grid;
@@ -36,16 +33,14 @@
     @media (max-width: 980px){
       .wrap{ grid-template-columns: 1fr; }
     }
-
     .card{
       border-radius:16px;
       background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
       border:1px solid var(--stroke);
       box-shadow: 0 14px 40px rgba(0,0,0,.45);
       overflow:hidden;
-      min-width:0; /* critical: prevent grid overflow overlap */
+      min-width:0;
     }
-
     .stage{ position:relative; }
     .stage::before{
       content:"";
@@ -53,7 +48,6 @@
       background: radial-gradient(800px 400px at 50% 100%, rgba(255,255,255,.08), transparent 60%);
       pointer-events:none;
     }
-
     canvas{ display:block; width:100%; height:auto; aspect-ratio:16/9; }
 
     .hud{
@@ -116,7 +110,6 @@
       color: var(--text);
     }
 
-    /* Right panel */
     .side{
       padding:14px;
       display:flex; flex-direction:column; gap:12px;
@@ -131,7 +124,6 @@
       padding:12px;
       backdrop-filter: blur(10px);
     }
-    .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
     .stat{ font-weight:900; display:flex; flex-direction:column; gap:4px; }
     .stat small{ color:var(--muted); font-weight:800; }
 
@@ -154,10 +146,8 @@
       border-radius:12px;
       font-weight:900;
       cursor:pointer;
-      transition: transform .06s ease, border-color .2s ease;
     }
     button:hover{ border-color: rgba(102,227,255,.45); }
-    button:active{ transform: translateY(1px) scale(.995); }
     .btnRow{ display:flex; gap:10px; }
   </style>
 </head>
@@ -204,7 +194,7 @@
         <h2>Controls</h2>
         <div class="sub">
           • Click to aim<br/>
-          • Hold <span class="kbd">SPACE</span> to build power → release to shoot<br/>
+          • Hold <span class="kbd">SPACE</span> → release to shoot<br/>
           • While charging: <span class="kbd">A</span>/<span class="kbd">D</span> adds curve<br/>
           • <span class="kbd">N</span> = new game
         </div>
@@ -216,20 +206,9 @@
           <small id="detailLabel">Pick a spot and shoot.</small>
         </div>
         <div style="height:10px"></div>
-        <div class="row">
-          <div class="stat"><div>Kick results</div><small>10 kicks total</small></div>
-        </div>
+        <div class="stat"><div>Kick results</div><small>10 kicks total</small></div>
         <div style="height:8px"></div>
         <div class="kicks" id="kicks"></div>
-      </div>
-
-      <div class="panel sub">
-        Keeper AI:
-        <ul style="margin:8px 0 0 18px; padding:0;">
-          <li>Reads tendencies (repeat corners = more saves)</li>
-          <li>High power = less accuracy</li>
-          <li>Top corners are hardest to save</li>
-        </ul>
       </div>
 
       <div class="btnRow">
@@ -260,11 +239,10 @@
   const W = canvas.width, H = canvas.height;
 
   const goal = {
-    // Goal mouth quad (screen-space)
-    p0: {x: W*0.33, y: H*0.20}, // left top
-    p1: {x: W*0.67, y: H*0.20}, // right top
-    p2: {x: W*0.78, y: H*0.58}, // right bottom
-    p3: {x: W*0.22, y: H*0.58}, // left bottom
+    p0: {x: W*0.33, y: H*0.20},
+    p1: {x: W*0.67, y: H*0.20},
+    p2: {x: W*0.78, y: H*0.58},
+    p3: {x: W*0.22, y: H*0.58},
   };
 
   const ballStart = { x: W*0.50, y: H*0.86 };
@@ -276,7 +254,7 @@
     aiming: true,
     charging: false,
     power: 0,
-    spin: 0,        // -1..1
+    spin: 0,
     aim: { x: W*0.50, y: H*0.40 },
     shot: null,
     keeper: null,
@@ -292,26 +270,17 @@
 
   function setMessage(html){ msg.innerHTML = html; }
 
-  // Robust point-in-convex-quad using cross products (works reliably)
   function cross(ax,ay,bx,by){ return ax*by - ay*bx; }
+  function pointInTri(p,a,b,c){
+    const s1 = cross(b.x-a.x,b.y-a.y, p.x-a.x,p.y-a.y);
+    const s2 = cross(c.x-b.x,c.y-b.y, p.x-b.x,p.y-b.y);
+    const s3 = cross(a.x-c.x,a.y-c.y, p.x-c.x,p.y-c.y);
+    const hasNeg = (s1<0)||(s2<0)||(s3<0);
+    const hasPos = (s1>0)||(s2>0)||(s3>0);
+    return !(hasNeg && hasPos);
+  }
   function pointInQuad(pt, q){
-    const p = pt;
-    const a = q.p0, b = q.p1, c = q.p2, d = q.p3;
-    function sameSide(p1,p2, a,b){
-      const cp1 = cross(b.x-a.x, b.y-a.y, p1.x-a.x, p1.y-a.y);
-      const cp2 = cross(b.x-a.x, b.y-a.y, p2.x-a.x, p2.y-a.y);
-      return cp1*cp2 >= 0;
-    }
-    // Split quad into triangles (a,b,c) and (a,c,d)
-    function pointInTri(p,a,b,c){
-      const s1 = cross(b.x-a.x,b.y-a.y, p.x-a.x,p.y-a.y);
-      const s2 = cross(c.x-b.x,c.y-b.y, p.x-b.x,p.y-b.y);
-      const s3 = cross(a.x-c.x,a.y-c.y, p.x-c.x,p.y-c.y);
-      const hasNeg = (s1<0)||(s2<0)||(s3<0);
-      const hasPos = (s1>0)||(s2>0)||(s3>0);
-      return !(hasNeg && hasPos);
-    }
-    return pointInTri(p,a,b,c) || pointInTri(p,a,c,d);
+    return pointInTri(pt, q.p0,q.p1,q.p2) || pointInTri(pt, q.p0,q.p2,q.p3);
   }
 
   function initKickDots(){
@@ -355,25 +324,17 @@
     state.aiming = false;
     state.charging = false;
     keeperLabel.textContent = 'Keeper: Done';
-    let vibe = "Nice.";
-    if (state.score >= 8) vibe = "Elite finishing.";
-    else if (state.score >= 6) vibe = "Strong performance.";
-    else if (state.score >= 4) vibe = "Could be better.";
-    else vibe = "Rough day.";
-    setMessage(`Final: <b>${state.score} / 10</b> — ${vibe} <span>Press <span class="kbd">N</span> to start again.</span>`);
+    setMessage(`Final: <b>${state.score} / 10</b> <span>Press <span class="kbd">N</span> to start again.</span>`);
     detailLabel.textContent = 'Game over.';
   }
 
-  // Convert between goal-local (u,v) and screen by bilinear interpolation
   function goalUVToScreen(u,v){
     const a=goal.p0,b=goal.p1,c=goal.p2,d=goal.p3;
-    // bilinear: top lerp + bottom lerp then lerp between
     const topX = lerp(a.x,b.x,u), topY = lerp(a.y,b.y,u);
     const botX = lerp(d.x,c.x,u), botY = lerp(d.y,c.y,u);
     return { x: lerp(topX, botX, v), y: lerp(topY, botY, v) };
   }
   function screenToGoalUV(x,y){
-    // Simple iterative solve (but no longer used to validate "inside")
     let u = clamp((x - goal.p0.x)/(goal.p1.x-goal.p0.x), 0,1);
     let v = clamp((y - goal.p0.y)/(goal.p3.y-goal.p0.y), 0,1);
     for(let i=0;i<8;i++){
@@ -416,12 +377,10 @@
     const p = clamp(state.power,0,1);
     const spin = clamp(state.spin,-1,1);
 
-    // Accuracy worsens at very high power
     const wild = smoothstep(clamp((p-0.78)/0.22, 0, 1));
     const spreadU = lerp(0.020, 0.075, wild);
     const spreadV = lerp(0.018, 0.060, wild);
 
-    // Curve in U from spin
     const curve = spin * lerp(0.00, 0.11, p);
 
     let tu = clamp(aimUV.u + rand(-spreadU, spreadU), 0.04, 0.96);
@@ -440,17 +399,15 @@
       spin, curve,
       willMiss: Math.random() < missChance,
       missType: 'none',
-      outcome: null
+      outcome: null,
+      committed: false   // <-- FIX: prevent multi-commit
     };
 
-    state.keeper = {
-      plan,
-      t:0
-    };
+    state.keeper = { plan };
 
     state.aiming = false;
     keeperLabel.textContent = 'Keeper: Reading...';
-    setMessage(`<b>Shot away!</b> <span>(${spin===0?'no spin':(spin<0?'left curve':'right curve')}, power ${Math.round(p*100)}%)</span>`);
+    setMessage(`<b>Shot away!</b> <span>(power ${Math.round(p*100)}%)</span>`);
   }
 
   function resolveOutcome(){
@@ -468,11 +425,9 @@
       return;
     }
 
-    // Ball "impact" UV includes curve (builds during flight)
     const impactU = clamp(s.endUV.u + s.curve, 0.02, 0.98);
     const impactV = s.endUV.v;
 
-    // Time factor if keeper commits late
     const late = clamp((plan.commitT - (plan.flight*0.55)) / (plan.flight*0.45), 0, 1);
     const timeFactor = lerp(1.0, 0.75, late);
 
@@ -491,33 +446,38 @@
   }
 
   function commitKick(){
-    const out = state.shot?.outcome;
-    if (!out) return;
+    const s = state.shot;
+    if (!s || s.committed || !s.outcome) return;  // <-- FIX guard
+    s.committed = true;                            // <-- FIX mark committed
 
-    state.results.push(out);
+    state.results.push(s.outcome);
     const idx = state.results.length - 1;
     const dot = kicksEl.children[idx];
-    if (dot) dot.classList.add(out);
+    if (dot) dot.classList.add(s.outcome);
 
-    if (out === 'goal') state.score++;
+    if (s.outcome === 'goal') state.score++;
     scoreLabel.textContent = `Score: ${state.score}`;
 
-    if (out === 'goal'){
+    if (s.outcome === 'goal'){
       resultLabel.textContent = 'Result: GOAL ✅';
       detailLabel.textContent = 'Clean finish.';
       keeperLabel.textContent = 'Keeper: Beaten';
-      setMessage(`<b>GOAL!</b> <span>Keeper guessed ${state.keeper.plan.dive===-1?'left':(state.keeper.plan.dive===1?'right':'center')}.</span>`);
-    } else if (out === 'save'){
+      setMessage(`<b>GOAL!</b>`);
+    } else if (s.outcome === 'save'){
       resultLabel.textContent = 'Result: SAVED ❌';
       detailLabel.textContent = 'Keeper got there.';
       keeperLabel.textContent = 'Keeper: Save';
-      setMessage(`<b>SAVED!</b> <span>Great stop by the keeper.</span>`);
+      setMessage(`<b>SAVED!</b>`);
     } else {
       resultLabel.textContent = 'Result: MISS ⚠️';
-      detailLabel.textContent = `You ${state.shot.missType}.`;
+      detailLabel.textContent = `You ${s.missType}.`;
       keeperLabel.textContent = 'Keeper: Watches';
-      setMessage(`<b>MISS!</b> <span>You ${state.shot.missType}.</span>`);
+      setMessage(`<b>MISS!</b> <span>You ${s.missType}.</span>`);
     }
+
+    // IMPORTANT: clear shot so it cannot commit again
+    state.shot = null;
+    state.keeper = null;
 
     if (state.kick >= 10){ finishGame(); return; }
     state.kick++;
@@ -526,7 +486,6 @@
     setTimeout(() => resetKick(true), 900);
   }
 
-  // Drawing
   function drawSky(){
     const g = ctx.createLinearGradient(0,0,0,H);
     g.addColorStop(0, '#0b1730');
@@ -534,17 +493,6 @@
     g.addColorStop(1, '#04101c');
     ctx.fillStyle = g;
     ctx.fillRect(0,0,W,H);
-
-    function light(x,y){
-      const rg = ctx.createRadialGradient(x,y,0,x,y,230);
-      rg.addColorStop(0,'rgba(255,255,255,.16)');
-      rg.addColorStop(0.25,'rgba(255,255,255,.07)');
-      rg.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.fillStyle = rg;
-      ctx.beginPath(); ctx.arc(x,y,230,0,Math.PI*2); ctx.fill();
-    }
-    light(W*0.18,H*0.12);
-    light(W*0.82,H*0.12);
   }
 
   function drawPitch(){
@@ -556,30 +504,13 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, top, W, H-top);
 
-    for(let i=0;i<14;i++){
-      const x0 = -W*0.1 + (i/14)*W*1.2;
-      ctx.fillStyle = i%2 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)';
-      ctx.beginPath();
-      ctx.moveTo(x0, top);
-      ctx.lineTo(x0 + W*0.18, top);
-      ctx.lineTo(x0 + W*0.40, H);
-      ctx.lineTo(x0 + W*0.22, H);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Penalty spot
     ctx.fillStyle = 'rgba(255,255,255,.9)';
     ctx.beginPath(); ctx.arc(ballStart.x, ballStart.y+22, 4.5, 0, Math.PI*2); ctx.fill();
   }
 
   function drawGoal(){
-    // Frame
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(255,255,255,.92)';
-    ctx.shadowColor = 'rgba(0,0,0,.45)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 6;
     ctx.beginPath();
     ctx.moveTo(goal.p0.x, goal.p0.y);
     ctx.lineTo(goal.p1.x, goal.p1.y);
@@ -587,245 +518,65 @@
     ctx.lineTo(goal.p3.x, goal.p3.y);
     ctx.closePath();
     ctx.stroke();
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-    // Net shading
-    ctx.fillStyle = 'rgba(0,0,0,.22)';
-    ctx.beginPath();
-    ctx.moveTo(goal.p0.x, goal.p0.y);
-    ctx.lineTo(goal.p1.x, goal.p1.y);
-    ctx.lineTo(goal.p2.x, goal.p2.y);
-    ctx.lineTo(goal.p3.x, goal.p3.y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Net grid
     ctx.strokeStyle = 'rgba(255,255,255,.20)';
     ctx.lineWidth = 1;
     for(let i=0;i<=18;i++){
       const u=i/18;
-      const a = goalUVToScreen(u,0);
-      const b = goalUVToScreen(u,1);
+      const a=goalUVToScreen(u,0), b=goalUVToScreen(u,1);
       ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
     }
     for(let j=0;j<=10;j++){
       const v=j/10;
-      const a = goalUVToScreen(0,v);
-      const b = goalUVToScreen(1,v);
+      const a=goalUVToScreen(0,v), b=goalUVToScreen(1,v);
       ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
     }
-
-    // Highlight glow
-    const hg = ctx.createLinearGradient(0, goal.p0.y-30, 0, goal.p3.y+40);
-    hg.addColorStop(0,'rgba(255,255,255,.14)');
-    hg.addColorStop(0.3,'rgba(255,255,255,.06)');
-    hg.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle = hg;
-    ctx.beginPath();
-    ctx.moveTo(goal.p0.x, goal.p0.y);
-    ctx.lineTo(goal.p1.x, goal.p1.y);
-    ctx.lineTo(goal.p2.x, goal.p2.y);
-    ctx.lineTo(goal.p3.x, goal.p3.y);
-    ctx.closePath();
-    ctx.fill();
   }
 
-  function roundRect(x,y,w,h,r){
-    const rr = Math.min(r, w/2, h/2);
-    ctx.beginPath();
-    ctx.moveTo(x+rr,y);
-    ctx.lineTo(x+w-rr,y);
-    ctx.quadraticCurveTo(x+w,y,x+w,y+rr);
-    ctx.lineTo(x+w,y+h-rr);
-    ctx.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);
-    ctx.lineTo(x+rr,y+h);
-    ctx.quadraticCurveTo(x,y+h,x,y+h-rr);
-    ctx.lineTo(x,y+rr);
-    ctx.quadraticCurveTo(x,y,x+rr,y);
-    ctx.closePath();
-  }
-
-  function drawKeeper(time){
-    let u=0.5, v=0.66, rot=0, stretch=0;
-
-    if (state.shot && state.keeper){
-      const plan = state.keeper.plan;
-      const t = clamp(time/plan.flight, 0, 1);
-      const commit = (time < plan.commitT) ? 0 : smoothstep(clamp((time-plan.commitT)/(plan.flight-plan.commitT+1e-6), 0, 1));
-      u = lerp(0.5, plan.predU, commit);
-      v = lerp(0.66, plan.predV, commit*0.7);
-      rot = plan.dive * commit * 0.55;
-      stretch = commit;
-    }
-
-    const p = goalUVToScreen(u,v);
-
-    ctx.save();
-    ctx.translate(p.x,p.y);
-    const depthScale = lerp(0.85, 1.15, clamp((p.y - goal.p0.y)/(goal.p3.y - goal.p0.y), 0, 1));
-    ctx.scale(depthScale, depthScale);
-    ctx.rotate(rot);
-
-    // Shadow
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = 'rgba(0,0,0,.35)';
-    ctx.beginPath();
-    ctx.ellipse(0, 70, 42 + 22*stretch, 12, 0, 0, Math.PI*2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    const jersey = ctx.createLinearGradient(-40,-40,40,60);
-    jersey.addColorStop(0,'#1ed16b');
-    jersey.addColorStop(0.6,'#10a95a');
-    jersey.addColorStop(1,'#0c7c46');
-
-    const shorts = ctx.createLinearGradient(-30,10,30,90);
-    shorts.addColorStop(0,'#2b3446');
-    shorts.addColorStop(1,'#151c2a');
-
-    // torso
-    ctx.fillStyle = jersey;
-    roundRect(-34, -28, 68, 64, 16);
-    ctx.fill();
-
-    // arms
-    const armW=18, armL=56;
-    const armTilt = 0.45 + 0.9*stretch;
-
-    ctx.save();
-    ctx.rotate(-armTilt);
-    ctx.fillStyle = jersey; roundRect(-armW-6, -18, armW, armL, 10); ctx.fill();
-    ctx.fillStyle = '#f1f5ff'; roundRect(-armW-10, 28, armW+8, 18, 9); ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.rotate(armTilt);
-    ctx.fillStyle = jersey; roundRect(6, -18, armW, armL, 10); ctx.fill();
-    ctx.fillStyle = '#f1f5ff'; roundRect(4, 28, armW+8, 18, 9); ctx.fill();
-    ctx.restore();
-
-    // shorts
-    ctx.fillStyle = shorts;
-    roundRect(-30, 30, 60, 36, 12);
-    ctx.fill();
-
-    // legs + boots
-    const sock = ctx.createLinearGradient(-10,50,10,110);
-    sock.addColorStop(0,'#e9f0ff');
-    sock.addColorStop(1,'#cfd9f2');
-    ctx.fillStyle = sock;
-    roundRect(-22, 58, 18, 44, 9); ctx.fill();
-    roundRect(  4, 58, 18, 44, 9); ctx.fill();
-
-    ctx.fillStyle = '#0b0f18';
-    roundRect(-26, 96, 26, 14, 7); ctx.fill();
-    roundRect(  0, 96, 26, 14, 7); ctx.fill();
-
-    // head
-    const skin = ctx.createRadialGradient(0,-50,6,0,-44,26);
-    skin.addColorStop(0,'#ffddb9');
-    skin.addColorStop(1,'#e6b48b');
-    ctx.fillStyle = skin;
-    ctx.beginPath(); ctx.arc(0, -48, 20, 0, Math.PI*2); ctx.fill();
-
-    ctx.fillStyle = 'rgba(40,25,18,.9)';
-    ctx.beginPath(); ctx.arc(0, -56, 18, Math.PI, Math.PI*2); ctx.fill();
-
-    ctx.fillStyle = 'rgba(0,0,0,.12)';
-    ctx.beginPath(); ctx.arc(7, -44, 18, -0.6, 0.9); ctx.fill();
-
-    ctx.restore();
-  }
-
-  function drawBall(pos, scale, blur=0){
+  function drawBall(pos, scale){
     ctx.save();
     ctx.translate(pos.x,pos.y);
     ctx.scale(scale, scale);
-
-    if (blur>0){
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = 'rgba(255,255,255,.7)';
-      ctx.beginPath();
-      ctx.ellipse(-22*blur, 8*blur, 18+10*blur, 10+6*blur, 0, 0, Math.PI*2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
     const g = ctx.createRadialGradient(-10,-12,6,0,0,34);
-    g.addColorStop(0,'#ffffff');
-    g.addColorStop(0.55,'#f1f3f7');
-    g.addColorStop(1,'#cfd7e6');
-
-    ctx.fillStyle = g;
+    g.addColorStop(0,'#ffffff'); g.addColorStop(0.6,'#f1f3f7'); g.addColorStop(1,'#cfd7e6');
+    ctx.fillStyle=g;
     ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.fill();
-
-    ctx.strokeStyle = 'rgba(20,30,50,.38)';
-    ctx.lineWidth = 2;
-    for(let i=0;i<6;i++){
-      const a=(i/6)*Math.PI*2;
-      ctx.beginPath(); ctx.arc(0,0,18,a,a+Math.PI/2); ctx.stroke();
-    }
-    ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.stroke();
-
-    ctx.fillStyle = 'rgba(255,255,255,.75)';
-    ctx.beginPath(); ctx.ellipse(-10,-12,9,6,-0.4,0,Math.PI*2); ctx.fill();
-
     ctx.restore();
   }
 
   function drawReticle(){
     if (!state.aiming) return;
     const inside = pointInQuad({x:state.aim.x,y:state.aim.y}, goal);
-
     const x=state.aim.x, y=state.aim.y;
     ctx.save();
     ctx.globalAlpha = inside ? 0.95 : 0.45;
-
-    const rg = ctx.createRadialGradient(x,y,0,x,y,44);
-    rg.addColorStop(0,'rgba(102,227,255,.20)');
-    rg.addColorStop(0.5,'rgba(102,227,255,.08)');
-    rg.addColorStop(1,'rgba(102,227,255,0)');
-    ctx.fillStyle = rg;
-    ctx.beginPath(); ctx.arc(x,y,44,0,Math.PI*2); ctx.fill();
-
     ctx.strokeStyle = inside ? 'rgba(102,227,255,.95)' : 'rgba(255,255,255,.45)';
     ctx.lineWidth = 2;
-
     ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x-26,y); ctx.lineTo(x-10,y);
-    ctx.moveTo(x+10,y); ctx.lineTo(x+26,y);
-    ctx.moveTo(x,y-26); ctx.lineTo(x,y-10);
-    ctx.moveTo(x,y+10); ctx.lineTo(x,y+26);
-    ctx.stroke();
-
     ctx.restore();
   }
 
-  // Input: map mouse coords to canvas coords correctly
   function eventToCanvas(e){
     const r = canvas.getBoundingClientRect();
-    const x = (e.clientX - r.left) * (W / r.width);
-    const y = (e.clientY - r.top)  * (H / r.height);
-    return {x,y};
+    return {
+      x: (e.clientX - r.left) * (W / r.width),
+      y: (e.clientY - r.top)  * (H / r.height)
+    };
   }
 
   canvas.addEventListener('mousemove', (e) => {
     const p = eventToCanvas(e);
-    if (state.aiming){
-      state.aim.x = p.x;
-      state.aim.y = p.y;
-    }
+    if (state.aiming){ state.aim = p; }
   });
 
   canvas.addEventListener('click', (e) => {
     if (!state.aiming) return;
     const p = eventToCanvas(e);
     if (pointInQuad(p, goal)){
-      state.aim.x = p.x; state.aim.y = p.y;
+      state.aim = p;
       setMessage(`Aim set. <span>Hold <span class="kbd">SPACE</span> to power up, release to shoot.</span>`);
     } else {
-      setMessage(`Click <b>inside the goal</b> to aim. <span>Then hold <span class="kbd">SPACE</span>.</span>`);
+      setMessage(`Click <b>inside the goal</b> to aim.`);
     }
   });
 
@@ -834,12 +585,11 @@
     keys.add(e.code);
 
     if (e.code === 'KeyN'){ resetKick(false); return; }
-
     if (!state.aiming) return;
 
     if (e.code === 'Space' && !state.charging){
       if (!pointInQuad({x:state.aim.x,y:state.aim.y}, goal)){
-        setMessage(`Aim first: click <b>inside the goal</b>. <span>Then hold <span class="kbd">SPACE</span>.</span>`);
+        setMessage(`Aim first: click <b>inside the goal</b>.`);
         return;
       }
       state.charging = true;
@@ -860,69 +610,47 @@
   newBtn.addEventListener('click', () => resetKick(false));
   resetBtn.addEventListener('click', () => { if (!state.shot) resetKick(true); });
 
-  // Animation
   let last = performance.now();
   function frame(now){
     const dt = Math.min(0.033, (now-last)/1000);
     last = now;
 
-    // power + spin
     if (state.aiming && state.charging){
       state.power = clamp(state.power + dt*0.85, 0, 1);
       if (keys.has('KeyA')) state.spin = clamp(state.spin - dt*1.6, -1, 1);
       if (keys.has('KeyD')) state.spin = clamp(state.spin + dt*1.6, -1, 1);
-
       powerFill.style.width = `${Math.round(state.power*100)}%`;
       powerPct.textContent = `${Math.round(state.power*100)}%`;
       spinLabel.textContent = `${Math.round(state.spin*100)}`;
-    } else if (state.aiming){
-      state.spin = lerp(state.spin, 0, dt*2.2);
-      spinLabel.textContent = `${Math.round(state.spin*100)}`;
     }
 
-    // draw
     drawSky();
     drawPitch();
     drawGoal();
 
-    // keeper + ball
     if (!state.shot){
-      drawKeeper(0);
-      drawBall(ballStart, 0.52, 0);
+      drawBall(ballStart, 0.52);
     } else {
       const s = state.shot;
       s.t += dt;
       const t = clamp(s.t / s.flight, 0, 1);
       const te = smoothstep(t);
-
-      const curveNow = s.curve * (t*t); // curve builds during flight
-      const end = goalUVToScreen(clamp(s.endUV.u + curveNow, 0.02, 0.98), s.endUV.v);
-
+      const end = goalUVToScreen(clamp(s.endUV.u + (s.curve*(t*t)), 0.02, 0.98), s.endUV.v);
       const x = lerp(s.start.x, end.x, te);
       const y = lerp(s.start.y, end.y, te);
-
-      const scale = lerp(0.52, 0.20, te);
-      const blur = te * lerp(0.2, 1.0, clamp(state.power,0,1));
-
-      drawKeeper(s.t);
-      drawBall({x,y}, scale, blur);
-
-      if (s.t < state.keeper.plan.commitT) keeperLabel.textContent = 'Keeper: Reading...';
-      else keeperLabel.textContent = 'Keeper: Diving!';
+      drawBall({x,y}, lerp(0.52, 0.20, te));
 
       if (t >= 0.98 && !s.outcome) resolveOutcome();
-      if (t >= 1.00 && s.outcome) commitKick();
+      if (t >= 1.00 && s.outcome && !s.committed) commitKick();  // <-- FIX guard here too
     }
 
     drawReticle();
     requestAnimationFrame(frame);
   }
 
-  // Kick dots
   initKickDots();
   resetKick(false);
   requestAnimationFrame(frame);
-
 })();
 </script>
 </body>
